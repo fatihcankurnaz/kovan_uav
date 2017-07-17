@@ -47,6 +47,7 @@ class VelHelp{
 
 VelHelp vel_handle;
 void differenceHandle(const uav::UAVPose &msg){
+	//It seems UAVPose message doesn't have fields linear and angular. Instead, it has position and orientation fields, respectively.
 	vel_handle.setVel(msg.linear, msg.angular);
 	
 }
