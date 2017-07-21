@@ -13,8 +13,8 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
-#include <uav/UAVPose.h>
-#include <uav/Done.h>
+#include <hector_uav_msgs/UAVPose.h>
+#include <hector_uav_msgs/Done.h>
 #include <boost/shared_ptr.hpp>
 #include <signal.h>
 #include <boost/bind.hpp>

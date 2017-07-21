@@ -7,6 +7,7 @@ endif()
 
 find_package(catkin REQUIRED COMPONENTS
   hector_quadrotor_demo
+  control_toolbox
   roscpp
   std_msgs
   tf

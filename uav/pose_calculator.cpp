@@ -1,6 +1,6 @@
 #include <ros/ros.h>
-#include <uav/Done.h>
-#include <uav/UAVPose.h>
+#include <hector_uav_msgs/UAVPose.h>
+#include <hector_uav_msgs/Done.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <stdlib.h>
@@ -279,7 +279,7 @@ class PoseHelp{
 			double error = desired_position.x-current_position.x;
 			double propor = error*pidx.Kp;
 		//	ROS_INFO_STREAM("XXX   propor "<<propor<<"    ");
-			double deriv = (error-pidx.pre_error)*pidx.Kd;
+			double deriv = (error-pidx.pre_error)*pidx.Kd; //1
 		//	ROS_INFO_STREAM("XXX   derive "<<deriv<<"     ");
 			pidx.updateIntegral(error);
 			
