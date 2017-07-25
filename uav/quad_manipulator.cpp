@@ -2,6 +2,7 @@
 #include <std_srvs/Empty.h>
 #include <control_toolbox/pid.h>
 #include <gazebo_msgs/SpawnModel.h>
+#include <tf/transform_listener.h>
 
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -14,11 +15,14 @@
 #include <fstream>
 //#include <thread>
 //#include <mutex>
-#include <map> // mapping of threads, common to all threads
+//#include <map> // mapping of threads, common to all threads
+#include <cmath>
 
 #define EQUAL_CONST 0.5
 static int quadrotor_id = 1;
-std::string quad_xacro_path = "~/catkin_ws/src/hector_quadrotor_description/urdf/quadrotor_hokuyo_utm30lx.gazebo.xacro";
+
+// PROBLEMATIC FILE READING !!!!
+std::string quad_xacro_path = "/home/burak/catkin_ws/src/hector_quadrotor_description/urdf/quadrotor_hokuyo_utm30lx.gazebo.xacro";
 
 void goalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 void quadPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
@@ -59,6 +63,7 @@ class QuadController {
 		geometry_msgs::PoseStamped goalPose, quadPose;
 
 		std::string quad_name, frame_name;
+		double yaw_command;
 		bool desired_updated;
 		bool desired_achived;
 		bool operating;
@@ -69,6 +74,7 @@ class QuadController {
 			desired_updated = false;
 			desired_achived = false;
 			operating = false;
+			yaw_command = 0;
 			pid_.x.init(ros::NodeHandle(node, "x"));
 			pid_.y.init(ros::NodeHandle(node, "y"));
 			pid_.z.init(ros::NodeHandle(node, "z"));
@@ -82,7 +88,6 @@ class QuadController {
 			quad_name = "quadrotor_" + quadrotor_id;
 			frame_name = "";
 			quadrotor_id++;
-			ROS_INFO("Constructor is done.");
 		}
 
 		~QuadController() {}
@@ -135,6 +140,12 @@ void goalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 	double x = msg->pose.position.x;
 	double y = msg->pose.position.y;
 	double z = msg->pose.position.z;
+
+	double temp;
+	tf::Quaternion q(msg->pose.orientation.x, msg->pose.orientation.y, 
+		msg->pose.orientation.z, msg->pose.orientation.w);
+	tf::Matrix3x3(q).getRPY(temp, temp, the_quad->yaw_command);
+
 	if((the_quad->goalPose.pose.position.x == x) 
 		&& (the_quad->goalPose.pose.position.y == y) 
 		&& (the_quad->goalPose.pose.position.z == z))
@@ -145,8 +156,8 @@ void goalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 	the_quad->desired_updated = true;
 	the_quad->desired_achived = false;
 
-	ROS_INFO("Goal is set : %f, %f, %f", the_quad->goalPose.pose.position.x, 
-		the_quad->goalPose.pose.position.y, the_quad->goalPose.pose.position.z);
+	/*ROS_INFO("Goal is set : %f, %f, %f", the_quad->goalPose.pose.position.x, 
+		the_quad->goalPose.pose.position.y, the_quad->goalPose.pose.position.z);*/
 }
 
 void quadPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) 
@@ -169,6 +180,17 @@ void quadPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 		double x = the_quad->pid_.x.computeCommand(goalX - the_quad->quadPose.pose.position.x, period);
 		double y = the_quad->pid_.y.computeCommand(goalY - the_quad->quadPose.pose.position.y, period);
 		double z = the_quad->pid_.z.computeCommand(goalZ - the_quad->quadPose.pose.position.z, period);
+
+		tf::Quaternion q(msg->pose.orientation.x, msg->pose.orientation.y,
+			msg->pose.orientation.z, msg->pose.orientation.w);
+		double yaw = tf::getYaw(q);
+		double yaw_error = the_quad->yaw_command - yaw;
+	    // detect wrap around pi and compensate
+
+		if (yaw_error > 3.14) 
+			yaw_error -= 2 * 3.14;
+		else if (yaw_error < -3.14) 
+			yaw_error += 2 * 3.14;
 
 		// if UAV is in the correct position it will return to CommandDone
 		if( isEqual(goalX, the_quad->quadPose.pose.position.x) 
@@ -193,23 +215,14 @@ void quadPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 		vel_msg.linear.y = y;
 		vel_msg.linear.z = z;
 
-		ROS_INFO("Linear vel-x : %f, vel-y: %f, vel-z: %f", x, y, z);
+		//ROS_INFO("Linear vel-x : %f, vel-y: %f, vel-z: %f", x, y, z);
 		the_quad->quad_vel.publish(vel_msg);
 	}	
 }
 
-void spawnQuadrotor(QuadController& new_quad)
-{
-	//...
-	// Spawn urdf model services
-	// given the controller instance push controller into map activeQuadrotors
-	// start the thread's actual job via controller's startServing - can change name - method
-	// use mutexes to manipulate common variables ...
-}
-
 int main(int argc, char **argv) 
 {
-	ROS_INFO("HELLOOOOO!");
+	//ROS_INFO("HELLOOOOO!");
 	ros::init(argc, argv, "quad_manipulator");
 	ros::NodeHandle root_node;
 
@@ -231,7 +244,7 @@ int main(int argc, char **argv)
 	//activeQuadrotors[quad_instance->frame_name] = quad_instance;
 	the_quad = new QuadController(root_node);
 	//the_quad->spawn();
-	ROS_INFO("Spawn method has returned.");
+	//ROS_INFO("Spawn method has returned.");
 
 	ros::spin();
 	return 0;
