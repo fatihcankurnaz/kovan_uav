@@ -25,20 +25,16 @@ catkin_package(
 
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 
-#add_executable(pose_calculator src/pose_calculator.cpp)
-#target_link_libraries(pose_calculator ${catkin_LIBRARIES})
-
-#add_executable(uav_master src/uav_master.cpp)
-#target_link_libraries(uav_master ${catkin_LIBRARIES})
-
-#add_executable(vel_calculator src/vel_calculator.cpp)
-#target_link_libraries(vel_calculator ${catkin_LIBRARIES})
 
 add_executable(set_goal src/set_goal.cpp)
 target_link_libraries(set_goal ${catkin_LIBRARIES})
-add_executable(basic_position_controller src/basic_position_controller.cpp)
-target_link_libraries(basic_position_controller ${catkin_LIBRARIES})
-add_executable(basic_velocity_controller src/basic_velocity_controller.cpp)
-target_link_libraries(basic_velocity_controller ${catkin_LIBRARIES})
-add_executable(goal_with_action src/goal_with_action.cpp)
-target_link_libraries(goal_with_action ${catkin_LIBRARIES})
+
+add_executable(quad_position_manipulator src/quad_position_manipulator.cpp)
+target_link_libraries(quad_position_manipulator ${catkin_LIBRARIES})
+
+
+add_executable(quad_velocity_manipulator src/quad_velocity_manipulator.cpp)
+target_link_libraries(quad_velocity_manipulator ${catkin_LIBRARIES})
+
+add_executable(quad_spawner src/quad_spawner.cpp)
+target_link_libraries(quad_spawner ${catkin_LIBRARIES})

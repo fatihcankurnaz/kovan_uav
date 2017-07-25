@@ -3,8 +3,9 @@
 <launch>
 
 	 <rosparam file="$(find hector_manipulator)/params/params.yaml"/>
-	 <node pkg="hector_manipulator" type="set_goal" name="goal_setter"/>
-	 <node pkg="hector_manipulator" type="basic_position_controller" name="position_controller" output="screen"/>
-	 <!--node pkg="hector_manipulator" type="basic_velocity_controller" name="velocity_controller" output="screen"/-->
-
+         <node pkg="hector_manipulator" type="quad_position_manipulator" name="quadrotor_position_controller" output="screen"/>
+	 <node pkg="hector_manipulator" type="quad_velocity_manipulator" name="quadrotor_velocity_controller"/>
+         <node pkg="hector_manipulator" type="set_goal" name="goal_setter"/>
+	
+	 
 </launch>
