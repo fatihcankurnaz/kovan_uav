@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf
   hector_uav_msgs
+  
 )
 
 
@@ -19,7 +20,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 
 
 catkin_package(
-	CATKIN_DEPENDS roscpp tf hector_quadrotor_demo hector_uav_msgs
+	CATKIN_DEPENDS roscpp tf hector_quadrotor_demo hector_uav_msgs 
 )
 
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
@@ -35,5 +36,9 @@ include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 
 add_executable(set_goal src/set_goal.cpp)
 target_link_libraries(set_goal ${catkin_LIBRARIES})
-add_executable(basic_flyer src/basic_flyer.cpp)
-target_link_libraries(basic_flyer ${catkin_LIBRARIES})
+add_executable(basic_position_controller src/basic_position_controller.cpp)
+target_link_libraries(basic_position_controller ${catkin_LIBRARIES})
+add_executable(basic_velocity_controller src/basic_velocity_controller.cpp)
+target_link_libraries(basic_velocity_controller ${catkin_LIBRARIES})
+add_executable(goal_with_action src/goal_with_action.cpp)
+target_link_libraries(goal_with_action ${catkin_LIBRARIES})

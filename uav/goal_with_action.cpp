@@ -1,24 +1,22 @@
 #include <ros/ros.h>
 #include <hector_uav_msgs/EnableMotors.h>
 #include <geometry_msgs/Twist.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <hector_uav_msgs/PoseActionGoal.h>
 
 int main(int argc,char** argv){
 	ros::init(argc,argv,"goal_setter");
 	ros::NodeHandle nh;
-	//ros::Publisher pub_vel = nh.advertise<hector_uav_msgs::PoseActionGoal>("/action/pose/goal",1000);
-	ros::Publisher goal_pub = nh.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal",1);
-	//hector_uav_msgs::PoseActionGoal goal;
-	geometry_msgs::PoseStamped goal;
+	ros::Publisher pub_vel = nh.advertise<hector_uav_msgs::PoseActionGoal>("/action/pose/goal",1000);
+	hector_uav_msgs::PoseActionGoal goal;
 	
-	goal.pose.position.z = 20;
-	goal.pose.position.y = -8;
-	goal.pose.position.x = 12;
+	goal.goal.target_pose.pose.position.z = 15;
+	goal.goal.target_pose.pose.position.y = 10;
+	goal.goal.target_pose.pose.position.x = 3;
 
-	goal.pose.orientation.x = 0;
-	goal.pose.orientation.y = 0;
-	goal.pose.orientation.z = 0;
-	goal.pose.orientation.w = 1;
+	goal.goal.target_pose.pose.orientation.x = 0;
+	goal.goal.target_pose.pose.orientation.y = 0;
+	goal.goal.target_pose.pose.orientation.z = 0;
+	goal.goal.target_pose.pose.orientation.w = 1;
 	/* ---------------------------- Enabling motors handled by pose_action node ---------------------*/
 	ros::ServiceClient enable_motors = nh.serviceClient<hector_uav_msgs::EnableMotors>("/enable_motors");
 	hector_uav_msgs::EnableMotors srv;
@@ -31,9 +29,9 @@ int main(int argc,char** argv){
 	
 	ros::Rate rate(10.0);
 	while(ros::ok()){
-		goal.header.stamp = ros::Time::now();
-		goal.header.frame_id = "world";
-		goal_pub.publish(goal);
+		goal.goal.target_pose.header.stamp = ros::Time::now();
+		goal.goal.target_pose.header.frame_id = "world";
+		pub_vel.publish(goal);
 				
 		rate.sleep();
 	}
