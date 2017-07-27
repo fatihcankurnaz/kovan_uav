@@ -122,20 +122,20 @@ class Wait {
 		Wait() {
 		}
 
-		int get_for(int idx) {
+		int get_for(unsigned int idx) {
 			if(idx<(this->_for).size())
 				return (this->_for)[idx];
 			return -1;
 		}
 
-		int get_except(int idx) {
+		int get_except(unsigned int idx) {
 			if(idx<(this->_except).size())
 				return (this->_except)[idx];
 			return -1;
 		}
 
-		bool has_except(int except) { // return if this has specific except.
-			for(int i=0; i<(this->_except).size(); i++) {
+		bool has_except( int except) { // return if this has specific except.
+			for(size_t i=0; i<(this->_except).size(); i++) {
 				if(except == (this->_except)[i])
 					return true;
 			}
@@ -211,8 +211,8 @@ class Action {
 			return this->_goto_pose;
 		}
 
-		uav::UAVPose get_UAVPose() {
-			uav::UAVPose pose;
+		hector_uav_msgs::UAVPose get_UAVPose() {
+			hector_uav_msgs::UAVPose pose;
 
 			pose.position.x = (this->_goto_pose).get_pos_x();
 			pose.position.y = (this->_goto_pose).get_pos_y();
@@ -336,7 +336,7 @@ bool action_can_proceed(Action& action) {
 	}
 
 	if(!has_for && action.has_wait_except()) {
-		for(int i=0; i<GLOBALS.action_list.size(); i++) {
+		for(size_t i=0; i<GLOBALS.action_list.size(); i++) {
 			if(!action.has_wait_except(GLOBALS.action_list[i]) && !GLOBALS.completed_actions[GLOBALS.action_list[i]]) {
 				GLOBALS.mtx.unlock();
 				return false;
@@ -353,7 +353,7 @@ bool double_equal(double a, double b) {
 	return diff < 0.01;
 }
 
-bool correct_done_received(Action* act, uav::Done msg) {
+bool correct_done_received(Action* act, hector_uav_msgs::Done msg) {
 	Pose pose = act->get_goto_pose();
 	print_debug_message("is correct???");
 	std::cout << pose.get_pos_x() << " " << pose.get_pos_y() << " " << pose.get_pos_z() << " " << pose.get_ori_x() << " " << pose.get_ori_y() << " " << pose.get_ori_z() << std::endl;
@@ -362,9 +362,9 @@ bool correct_done_received(Action* act, uav::Done msg) {
 	return double_equal(pose.get_pos_x(), msg.position.x) && double_equal(pose.get_pos_y(), msg.position.y) && double_equal(pose.get_pos_z(), msg.position.z) && double_equal(pose.get_ori_x(), msg.orientation.x) && double_equal(pose.get_ori_y(), msg.orientation.y) && double_equal(pose.get_ori_z(), msg.orientation.z);
 }
 
-void CommandDone_received(const uav::Done::ConstPtr &msgptr, std::string uav_name) {
+void CommandDone_received(const hector_uav_msgs::Done::ConstPtr &msgptr, std::string uav_name) {
 	print_debug_message("CommandDone received. " + uav_name +  " nameend.");
-	uav::Done msg = *msgptr.get();
+	hector_uav_msgs::Done msg = *msgptr.get();
 	std::cout << msg.commandDone << " " << msg.position.x << " " << msg.position.y << " " << msg.position.z << " " << msg.orientation.x << " " << msg.orientation.y << " " << msg.orientation.z << std::endl;
 
 
@@ -379,9 +379,9 @@ void CommandDone_received(const uav::Done::ConstPtr &msgptr, std::string uav_nam
 
 void drive_UAV(UAV& uav, ros::NodeHandle& nh) {
 
-	ros::Publisher publisher = nh.advertise<uav::UAVPose>(uav.get_name() + "/DesiredPose", 1);
+	ros::Publisher publisher = nh.advertise<hector_uav_msgs::UAVPose>(uav.get_name() + "/DesiredPose", 1);
 	std::string uav_name = uav.get_name();
-	ros::Subscriber subscriber = nh.subscribe<uav::Done>(uav.get_name() + "/CommandDone", 1, boost::bind(&CommandDone_received, _1, uav_name));
+	ros::Subscriber subscriber = nh.subscribe<hector_uav_msgs::Done>(uav.get_name() + "/CommandDone", 1, boost::bind(&CommandDone_received, _1, uav_name));
 
 	print_debug_message("Starting " + uav.get_name());
 	//std::mutex action_cnd_uniq_lck_mtx;
@@ -421,7 +421,7 @@ void drive_UAV(UAV& uav, ros::NodeHandle& nh) {
 		while(ros::ok() && !GLOBALS.uav_action_done[uav.get_name()]) {
 			GLOBALS.drive_uav_mtx.lock();
 			//GLOBALS.mtx.unlock();
-			uav::UAVPose pose = action.get_UAVPose();
+			hector_uav_msgs::UAVPose pose = action.get_UAVPose();
 			publisher.publish(pose);
 			ros::spinOnce();
 			std::cout << "spinned" << std::endl;
@@ -491,7 +491,7 @@ Pose read_pose(rapidxml::xml_node<>* node) {
 
 
 void populate(ros::NodeHandle& nh) {
-	rapidxml::file<> file("/home/baskin/KOVAN/src/uav/uav_src/sample.xml");
+	rapidxml::file<> file("/home/tahsin/catkin_ws/src/hector_manipulator/src/sample.xml");
 	rapidxml::xml_document<> xml_doc;
 	xml_doc.parse<rapidxml::parse_default>(file.data());
 	rapidxml::xml_node<> *plan_node = xml_doc.first_node("plan");
@@ -598,7 +598,7 @@ int main(int argc, char* argv[]) {
 
 	populate(nh);
 
-	for(int i=0; i<GLOBALS.thread_refs.size(); i++) {
+	for(size_t i=0; i<GLOBALS.thread_refs.size(); i++) {
 		(GLOBALS.thread_refs[i])->join();
 	}
 	return 0;

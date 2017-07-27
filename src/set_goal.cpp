@@ -19,15 +19,6 @@ int main(int argc,char** argv){
 	goal.pose.orientation.y = 0;
 	goal.pose.orientation.z = 0;
 	goal.pose.orientation.w = 1;
-	/* ---------------------------- Enabling motors handled by pose_action node ---------------------*/
-	ros::ServiceClient enable_motors = nh.serviceClient<hector_uav_msgs::EnableMotors>("/enable_motors");
-	hector_uav_msgs::EnableMotors srv;
-	srv.request.enable = true;
-	if(enable_motors.call(srv)){
-		if(srv.response.success){
-			ROS_INFO("Motors are enabled");		
-		}
-	}
 	
 	ros::Rate rate(10.0);
 	while(ros::ok()){

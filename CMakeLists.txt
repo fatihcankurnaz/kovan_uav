@@ -36,5 +36,5 @@ target_link_libraries(quad_position_manipulator ${catkin_LIBRARIES})
 add_executable(quad_velocity_manipulator src/quad_velocity_manipulator.cpp)
 target_link_libraries(quad_velocity_manipulator ${catkin_LIBRARIES})
 
-add_executable(quad_spawner src/quad_spawner.cpp)
-target_link_libraries(quad_spawner ${catkin_LIBRARIES})
+add_executable(uav_master src/uav_master.cpp)
+target_link_libraries(uav_master ${catkin_LIBRARIES})

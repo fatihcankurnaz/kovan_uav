@@ -1,7 +1,0 @@
-<?xml version="1.0"?>
-
-<launch>
-
-         <node pkg="hector_manipulator" type="quad_spawner" name="quadrotor_spawner" output="screen" args="3"/>	
-	 
-</launch>
