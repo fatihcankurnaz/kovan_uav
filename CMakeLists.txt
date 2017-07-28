@@ -29,6 +29,10 @@ include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 add_executable(set_goal src/set_goal.cpp)
 target_link_libraries(set_goal ${catkin_LIBRARIES})
 
+add_executable(motion_planner src/motion_planner.cpp)
+target_link_libraries(motion_planner ${catkin_LIBRARIES})
+
+
 add_executable(quad_position_manipulator src/quad_position_manipulator.cpp)
 target_link_libraries(quad_position_manipulator ${catkin_LIBRARIES})
 
