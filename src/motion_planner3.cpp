@@ -15,7 +15,8 @@ typedef struct MapEdge MapEdge;
 
 std::map<std::string, std::vector<std::pair<float, float> > > trajectories;
 std::map<std::string, std::pair<float, float> > obstacles;
-unsigned int _seed = 11;
+unsigned int _seed;
+bool planning_completed = false;
 int total_model_count = 0;
 double goalX, goalY, robotX, robotY;
 ros::Subscriber uav_goal, uav_done;
@@ -93,12 +94,16 @@ class MapTree {
 
 		MapNode* findNearestTo(std::pair<float, float> point) 
 		{
-			int index = 0;
+			int index = -1;
 			double min_dist = sqrt(pow(V[0]->location.first - point.first, 2) + 
 				pow(V[0]->location.second - point.second, 2));
 			int N = V.size();
 			for (int i=1; i<N; i++)
 			{
+				std::pair<float, float> pt = V[i]->location;
+				if (pt.first == goal->location.first && pt.second == goal->location.second)
+					continue;
+
 				double curr_dist = sqrt(pow(V[i]->location.first - point.first, 2) + 
 					pow(V[i]->location.second - point.second, 2));
 				if (curr_dist < min_dist)
@@ -107,6 +112,10 @@ class MapTree {
 					index = i;
 				}
 			}
+
+			if (index == -1)
+				return NULL;
+
 			return V[index];
 		}
 
@@ -129,7 +138,7 @@ class MapTree {
 
 		void DepthFirstTraversal()
 		{
-			ROS_INFO("Depth first traversal in order to check conditions of vertices and edges.");
+			//ROS_INFO("Depth first traversal in order to check conditions of vertices and edges.");
 			refreshNodes();
 			std::vector<MapNode*> slav;
 			slav.push_back(robot);
@@ -157,7 +166,8 @@ class MapTree {
 
 		void BackTraversal()
 		{
-			ROS_INFO("This traversal is to go on the parent nodes of the nodes in the tree.");
+			//ROS_INFO("This traversal is to go on the parent nodes of the nodes in the tree.");
+			//ROS_INFO("ROBOT: (%f, %f, %f)", robot->location.first, robot->location.second, robot->euclidean_dist_to_goal);
 
 			int nodes_traversed = 0;
 			MapNode* node = goal;
@@ -165,6 +175,8 @@ class MapTree {
 			{
 				if (node->euclidean_dist_to_goal == 0)
 					ROS_INFO("GOAL: (%f, %f, %f)", node->location.first, node->location.second, node->euclidean_dist_to_goal);
+				else if(node->location.first == robotX && node->location.second == robotY)
+					ROS_INFO("ROBOT: (%f, %f, %f)", node->location.first, node->location.second, node->euclidean_dist_to_goal);
 				else
 					ROS_INFO("Vertex: (%f, %f, %f)", node->location.first, node->location.second, node->euclidean_dist_to_goal);
 
@@ -172,12 +184,12 @@ class MapTree {
 				nodes_traversed++;
 			}
 
-			ROS_INFO("At the end of back traversal %d nodes are traversed.", nodes_traversed);
+			//ROS_INFO("At the end of back traversal %d nodes are traversed.", nodes_traversed);
 		}
 
 		std::vector<std::pair<float, float> > A_star_search()
 		{
-			ROS_INFO("A* search process is started.");
+			//ROS_INFO("A* search process is started.");
 			refreshNodes();
 			std::map<MapNode*, double> open_list;
 			open_list.insert(std::make_pair(robot, robot->euclidean_dist_to_goal));
@@ -223,7 +235,6 @@ class MapTree {
 					path.push_back(the_goal_node->location);
 					the_goal_node = the_goal_node->parent;
 				}
-				ROS_INFO("Hurraaayy!! A legitimate path is found! GREAT JOB!!!");
 				return path;
 			}
 
@@ -240,15 +251,14 @@ std::pair<float, float> random_location_generator(int min, int max, unsigned int
 
 	int rand_x = rand() % max + min - 100;
 	int rand_y = rand() % max + min - 100;
-	rand_loc.first  = (float)rand_x / 10;
-	rand_loc.second = (float)rand_y / 10;
+	rand_loc.first  = (float)(rand_x + 50) / 10;
+	rand_loc.second = (float)(rand_y + 50) / 10;
 
 	return rand_loc;
 }
 
 bool check_collision(float curr_x, float curr_y, float goal_x, float goal_y)
 {
-	//ROS_INFO("Collision check is started.");
 	bool no_collision = true;
 	float A = goal_x * goal_x + goal_y * goal_y;
 	std::map<std::string, std::pair<float, float> >::iterator itr = obstacles.begin();
@@ -256,12 +266,15 @@ bool check_collision(float curr_x, float curr_y, float goal_x, float goal_y)
 	{
 		std::pair<float, float> obs = itr->second;
 		float B = 2 * (goal_x*(curr_x - obs.first) + goal_y*(curr_y - obs.second));
-		float C = pow(curr_x - obs.first, 2) + pow(curr_y - obs.second, 2);
+		float C = pow(curr_x - obs.first, 2) + pow(curr_y - obs.second, 2) - 1;
 		float discriminant = B*B - 4*A*C;
 
-		if (C < 1 || discriminant > 0) // if the point is in the inflated area or on the obstacle or cause collision
+		/*if (C == 1 || discriminant == 0)
+			ROS_INFO("Point (%f, %f) is tangential to (%f, %f).", curr_x, curr_y, obs.first, obs.second);*/
+
+		if (C < 0 || discriminant > 0) // if the point is in the inflated area or on the obstacle or cause collision
 		{
-			//ROS_INFO("The sampled point would cause a collision with the obstacle on (%f, %f).", obs.first, obs.second);
+			//ROS_INFO("Collision check of (%f, %f) failed on (%f, %f).", curr_x, curr_y, obs.first, obs.second);
 			no_collision = false;
 			break;
 		}
@@ -298,13 +311,7 @@ MapNode* findNearestToGoal(MapTree* c_space, float gx, float gy)
 		ROS_INFO("UNREACHABLE GOAL NODE!!!");
 	else
 	{
-		ROS_INFO("Map generation is completed.");
 		int v_size = c_space->V.size();
-		/*for (int i=0; i<v_size; i++)
-		{
-			ROS_INFO("Vertex %d: (%f, %f, %f)", i+1, c_space->V[i]->location.first, c_space->V[i]->location.second, 
-				c_space->V[i]->euclidean_dist_to_goal);
-		}*/
 		ROS_INFO("Vertex count: %d.", v_size);
 	}
 
@@ -317,28 +324,30 @@ void RapidRandomTree()
 	
 	for(int i = 0; i < convergence_limit; i++, _seed += 2)
 	{
-		std::pair<float, float> random_location = random_location_generator(0, 200, _seed);
-		//ROS_INFO("Next point: (%f, %f).", random_location.first, random_location.second);
+		std::pair<float, float> random_location = random_location_generator(0, 200, _seed);		
 		MapNode *sub_nearest = c_space->findNearestTo(random_location);
+
+		if (sub_nearest == NULL)
+			continue;
 
 		if (!check_collision(random_location.first, random_location.second, sub_nearest->location.first, sub_nearest->location.second))
 			continue;
 
-		//ROS_INFO("(%f, %f) has passed the collision check and will be added to c_space.", random_location.first, random_location.second);
 		MapNode* added_node = c_space->addNode(random_location, sub_nearest);
 		c_space->addEdge(sub_nearest, added_node);
 	}
 
 	MapNode* nearest_to_goal = findNearestToGoal(c_space, goalX, goalY);
 	c_space->addEdge(nearest_to_goal, c_space->goal);
+	c_space->goal->parent = nearest_to_goal;
 }
 
 void publish_step_location(std::string uav)
 {
 	if (!trajectories[uav].empty())
 	{
-		std::pair<float, float> next_simple_loc = trajectories[uav].front();
-		trajectories[uav].erase(trajectories[uav].begin());
+		std::pair<float, float> next_simple_loc = trajectories[uav].back();
+		trajectories[uav].pop_back();
 
 		geometry_msgs::PoseStamped new_simple_goal;
 		new_simple_goal.header.stamp = ros::Time(0);
@@ -385,24 +394,37 @@ void UAVGoalStepCallback(const hector_uav_msgs::Vector::ConstPtr& msg)
 	c_space->setRobot(std::make_pair(robotX, robotY));
 	
 	RapidRandomTree();
-	//std::vector<std::pair<float, float> > P = c_space->A_star_search();
+	std::vector<std::pair<float, float> > P = c_space->A_star_search();
 	//trajectories.insert(std::make_pair("quadrotor", P));
+	trajectories["quadrotor"] = P;
+	planning_completed = true;
 	
 	//c_space->DepthFirstTraversal();
-	c_space->BackTraversal();
+	//c_space->BackTraversal();
 
-	// publish first location
-	//ROS_INFO("The length of the obtained trajectory: %d.", P.size());
-	//publish_step_location("quadrotor");
+	/*int v_size = c_space->V.size();
+	for (int i=0; i<v_size; i++)
+	{
+		if (c_space->V[i]->parent == NULL)
+		{
+			ROS_INFO("ROBOT");
+			continue;
+		}
+
+		ROS_INFO("(%f, %f, %f)", c_space->V[i]->parent->location.first, c_space->V[i]->parent->location.second, 
+			c_space->V[i]->parent->euclidean_dist_to_goal);
+	}*/
+
+	ROS_INFO("The length of the obtained trajectory: %d.", trajectories["quadrotor"].size());
 }
 
 void UAVDoneCallback(const hector_uav_msgs::Done::ConstPtr& msg)
 {
+	if (!planning_completed)
+		return;
+
 	if (!trajectories["quadrotor"].empty())
-	{
-		ROS_INFO("Another simple step is going to be sent to the QuadController instance.");
 		publish_step_location("quadrotor");
-	}
 	else 
 	{
 		/*std_msgs::String arrival_msg;
@@ -420,6 +442,8 @@ int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "quad_motion_planner3");
 	ros::NodeHandle node;
+	srand(time(0));
+	_seed = rand();
 
 	ros::Subscriber model_sub = node.subscribe("/gazebo/model_states", 10, &modelStateCallback);
 	uav_goal = node.subscribe("actual_uav_goal", 10, &UAVGoalStepCallback);
