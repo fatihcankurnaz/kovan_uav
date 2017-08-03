@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+	<rosparam file="$(find hector_manipulator)/param/params.yaml" />
+	<node pkg="hector_manipulator" type="quad_manipulator2" name="quad_controller" output="screen" />
+	<node pkg="hector_manipulator" type="motion_planner3" name="quad_motion_planner" output="screen" />
+	<node pkg="hector_manipulator" type="quad_user_interface" name="quad_UI" output="screen" />
+</launch>
