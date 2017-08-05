@@ -9,7 +9,7 @@
 
 #include <hector_uav_msgs/PoseActionGoal.h>
 #include <hector_uav_msgs/EnableMotors.h>
-#include <hector_uav_msgs/Done.h>
+#include <hector_uav_msgs/myDone.h>
 
 #include <boost/bind.hpp>
 #include <stdlib.h>
@@ -75,7 +75,7 @@ public:
 				quad_sub = node.subscribe<geometry_msgs::PoseStamped>(/*"/"+quad_name+*/"/ground_truth_to_tf/pose", 10, 
 					boost::bind(&QuadController::quadPoseCallback, this,quad_name, _1));
 				quad_vel = node.advertise<geometry_msgs::Twist>(/*"/"+quad_name+*/"/cmd_vel", 10);
-				quad_done = node.advertise<hector_uav_msgs::Done>(/*"/"+quad_name+*/"Done", 10);
+				quad_done = node.advertise<hector_uav_msgs::myDone>(/*"/"+quad_name+*/"myDone", 10);
 			}
 
 			void goalPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
@@ -142,7 +142,7 @@ public:
 						&& isEqual(goalY, correspondingQuad->quadPose.pose.position.y) 
 						&& isEqual(goalZ, correspondingQuad->quadPose.pose.position.z) )
 					{
-						hector_uav_msgs::Done done_send;
+						hector_uav_msgs::myDone done_send;
 
 						done_send.commandDone = true;
 						done_send.position.x = goalX;
@@ -156,10 +156,10 @@ public:
 					}
 					// corrects the position of the quadro by giving velocity
 		
-					vel_msg.linear.x = x;
-					vel_msg.linear.y = y;
+					vel_msg.linear.x = x * 0.25;
+					vel_msg.linear.y = y * 0.25;
 					vel_msg.linear.z = z;
-					vel_msg.angular.z = pid_.yaw.computeCommand(yaw_error, period);
+					vel_msg.angular.z = 1.5 * pid_.yaw.computeCommand(yaw_error, period);
 
 					correspondingQuad->quad_vel.publish(vel_msg);
 				}
@@ -217,7 +217,11 @@ int main(int argc, char **argv)
     Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
     Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");*/
 
+	ros::Rate rate(200);
+	while(ros::ok()) {
+		ros::spinOnce();
+	}
 	
-	ros::spin();
+	//ros::spin();
 	return 0;
 }
