@@ -9,7 +9,7 @@
 
 #include <hector_uav_msgs/PoseActionGoal.h>
 #include <hector_uav_msgs/EnableMotors.h>
-#include <hector_uav_msgs/myDone.h>
+#include <hector_uav_msgs/Done.h>
 
 #include <boost/bind.hpp>
 #include <stdlib.h>
@@ -75,13 +75,13 @@ public:
 				quad_sub = node.subscribe<geometry_msgs::PoseStamped>(/*"/"+quad_name+*/"/ground_truth_to_tf/pose", 10, 
 					boost::bind(&QuadController::quadPoseCallback, this,quad_name, _1));
 				quad_vel = node.advertise<geometry_msgs::Twist>(/*"/"+quad_name+*/"/cmd_vel", 10);
-				quad_done = node.advertise<hector_uav_msgs::myDone>(/*"/"+quad_name+*/"myDone", 10);
+				quad_done = node.advertise<hector_uav_msgs::Done>(/*"/"+quad_name+*/"Done", 10);
 			}
 
 			void goalPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
 			{
 				QuadController* correspondingQuad = activeQuadrotors[robot_frame];
-				
+				operating = true;
 				double x = msg->pose.position.x;
 				double y = msg->pose.position.y;
 				double z = msg->pose.position.z;
@@ -138,11 +138,11 @@ public:
 						yaw_error += 2 * 3.14;
 
 					// if UAV is in the correct position it will return to CommandDone
-					if( isEqual(goalX, correspondingQuad->quadPose.pose.position.x) 
+					if( operating && isEqual(goalX, correspondingQuad->quadPose.pose.position.x) 
 						&& isEqual(goalY, correspondingQuad->quadPose.pose.position.y) 
 						&& isEqual(goalZ, correspondingQuad->quadPose.pose.position.z) )
 					{
-						hector_uav_msgs::myDone done_send;
+						hector_uav_msgs::Done done_send;
 
 						done_send.commandDone = true;
 						done_send.position.x = goalX;
@@ -156,10 +156,10 @@ public:
 					}
 					// corrects the position of the quadro by giving velocity
 		
-					vel_msg.linear.x = x * 0.25;
-					vel_msg.linear.y = y * 0.25;
+					vel_msg.linear.x = x * 0.3;
+					vel_msg.linear.y = y * 0.3;
 					vel_msg.linear.z = z;
-					vel_msg.angular.z = 1.5 * pid_.yaw.computeCommand(yaw_error, period);
+					vel_msg.angular.z = 3 * pid_.yaw.computeCommand(yaw_error, period);
 
 					correspondingQuad->quad_vel.publish(vel_msg);
 				}

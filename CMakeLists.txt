@@ -25,20 +25,12 @@ catkin_package(
 
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 
-
-add_executable(set_goal src/set_goal.cpp)
-target_link_libraries(set_goal ${catkin_LIBRARIES})
+add_executable(quad_manipulator src/quad_manipulator.cpp)
+target_link_libraries(quad_manipulator ${catkin_LIBRARIES})
 
 add_executable(motion_planner src/motion_planner.cpp)
 target_link_libraries(motion_planner ${catkin_LIBRARIES})
 
+add_executable(quad_user_interface src/quad_user_interface.cpp)
+target_link_libraries(quad_user_interface ${catkin_LIBRARIES})
 
-add_executable(quad_position_manipulator src/quad_position_manipulator.cpp)
-target_link_libraries(quad_position_manipulator ${catkin_LIBRARIES})
-
-
-add_executable(quad_velocity_manipulator src/quad_velocity_manipulator.cpp)
-target_link_libraries(quad_velocity_manipulator ${catkin_LIBRARIES})
-
-add_executable(uav_master src/uav_master.cpp)
-target_link_libraries(uav_master ${catkin_LIBRARIES})
