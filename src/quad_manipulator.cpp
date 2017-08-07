@@ -18,7 +18,7 @@
 #include <map>
 #include <cmath>
 
-#define EQUAL_CONST 0.5
+#define EQUAL_CONST 0.05
 
 
 void goalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
@@ -34,7 +34,7 @@ struct
 unsigned int total_model_count = 0;
 
 // THERE IS AMBIGUITY ABOUT HOW TO PUT THIS INTO A THREAD AND START ITS SERVING.
-bool isEqual(double a, double b) { return abs(a - b) > EQUAL_CONST ? false : true; }
+bool isEqual(double a, double b) { return ( abs(a - b) > EQUAL_CONST ) ? false : true; }
 class Wrapper{
 public:
 	class QuadController {
@@ -80,8 +80,10 @@ public:
 
 			void goalPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
 			{
-				QuadController* correspondingQuad = activeQuadrotors[robot_frame];
+				//ROS_INFO("Robot step is being taken.");
 				operating = true;
+				QuadController* correspondingQuad = activeQuadrotors[robot_frame];
+				
 				double x = msg->pose.position.x;
 				double y = msg->pose.position.y;
 				double z = msg->pose.position.z;
@@ -100,14 +102,10 @@ public:
 				correspondingQuad->goalPose.pose.position.z = z;
 				correspondingQuad->desired_updated = true;
 				correspondingQuad->desired_achived = false;
-
-				/*ROS_INFO("Goal is set for [%s]: %f, %f, %f",robot_frame.c_str(),correspondingQuad->goalPose.pose.position.x, 
-					correspondingQuad->goalPose.pose.position.y, correspondingQuad->goalPose.pose.position.z);*/
 			}
 			
 			void quadPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
 			{
-				//ROS_INFO("robot_frame = %s",robot_frame.c_str());
 				Wrapper::QuadController* correspondingQuad = Wrapper::activeQuadrotors[robot_frame];
 
 				double goalX = correspondingQuad->goalPose.pose.position.x;
@@ -138,7 +136,7 @@ public:
 						yaw_error += 2 * 3.14;
 
 					// if UAV is in the correct position it will return to CommandDone
-					if( operating && isEqual(goalX, correspondingQuad->quadPose.pose.position.x) 
+					if(operating && isEqual(goalX, correspondingQuad->quadPose.pose.position.x) 
 						&& isEqual(goalY, correspondingQuad->quadPose.pose.position.y) 
 						&& isEqual(goalZ, correspondingQuad->quadPose.pose.position.z) )
 					{
@@ -152,7 +150,9 @@ public:
 						done_send.orientation.y = 0;
 						done_send.orientation.z = 0;
 
+						//ROS_INFO("Robot step is done.");
 						correspondingQuad->quad_done.publish(done_send);
+						operating = false;
 					}
 					// corrects the position of the quadro by giving velocity
 		
@@ -217,7 +217,7 @@ int main(int argc, char **argv)
     Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
     Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");*/
 
-	ros::Rate rate(200);
+	ros::Rate rate(1000);
 	while(ros::ok()) {
 		ros::spinOnce();
 	}

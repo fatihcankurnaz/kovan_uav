@@ -4,9 +4,7 @@
 #include <hector_uav_msgs/Vector.h>
 #include <hector_uav_msgs/Done.h>
 #include <std_msgs/String.h>
-#include <visualization_msgs/Marker.h>
 #include <vector>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
@@ -22,8 +20,7 @@ bool planning_completed = false;
 static int point_id = 0;
 int total_model_count = 0;
 double goalX, goalY, robotX, robotY;
-ros::Subscriber uav_goal, uav_done;
-ros::Publisher  uav_step, uav_arrived, visual_marker;
+ros::Publisher  uav_step, uav_arrived, samp_pub;
 
 struct MapNode {
 	int _id;
@@ -53,7 +50,7 @@ struct MapEdge {
 
 class MapTree {
 	public:
-		std::vector<MapNode*> V; //node vector held in graph.
+		std::vector<MapNode*> V;
 		MapNode* robot;
 		MapNode* goal;
 
@@ -152,54 +149,20 @@ class MapTree {
 			return result;
 		}
 
-		void DepthFirstTraversal()
-		{
-			refreshNodes();
-			std::vector<MapNode*> slav;
-			slav.push_back(robot);
-			robot->visited = true;
-			while(!slav.empty())
-			{
-				MapNode* back_node = slav.back();
-				back_node->visited = true;
-
-				if (back_node->euclidean_dist_to_goal == 0)
-					ROS_INFO("GOAL: (%f, %f, %f)", back_node->location.first, back_node->location.second, back_node->euclidean_dist_to_goal);
-				else
-				{
-					//ROS_INFO("%d->", back_node->_id);
-					printf("%d->", back_node->_id);
-				}
-
-				slav.pop_back();
-
-				int ns = back_node->neighbours.size();
-				for(int i=0; i<ns; i++)
-				{
-					if (back_node->neighbours[i]->neighbour->visited == false)
-						slav.push_back(back_node->neighbours[i]->neighbour);
-				}
-			}
-			printf("\n");
-		}
-
 		std::vector<std::pair<float, float> > BackTraversal()
 		{
+			MapNode* gnode;
+			gnode = goal;
 			std::vector<std::pair<float, float> > the_path;
-			int _node_count = 0;
-			MapNode* node = goal;
-			while(node != NULL)
+			while(gnode != NULL)
 			{
-				std::pair<float, float> next_loc = node->location;
-				the_path.push_back(next_loc);
-				_node_count++;
-				node = node->parent;
+				the_path.push_back(gnode->location);
+				gnode = gnode->parent;
 			}
-			ROS_INFO("Path length: %d.", _node_count);
 			return the_path;
 		}
 
-		std::vector<std::pair<float, float> > A_star_search()
+		/*std::vector<std::pair<float, float> > A_star_search()
 		{
 			refreshNodes();
 			std::map<MapNode*, double> open_list;
@@ -229,7 +192,7 @@ class MapTree {
 					{
 						goal_found = true;
 						open_list.insert(std::make_pair((*it)->neighbour, total_path_cost + (*it)->cost));
-						the_goal_node = (*it)->neighbour;
+						//the_goal_node = (*it)->neighbour;
 						break;
 					}
 
@@ -240,6 +203,7 @@ class MapTree {
 
 			if (goal_found)
 			{
+				the_goal_node = goal;
 				std::vector<std::pair<float, float> > path;
 				while(the_goal_node != NULL)
 				{
@@ -250,7 +214,7 @@ class MapTree {
 			}
 
 			return std::vector<std::pair<float, float> >();
-		}
+		}*/
 };
 
 MapTree *c_space;
@@ -268,33 +232,6 @@ std::pair<float, float> random_location_generator(int min, int max, unsigned int
 	return rand_loc;
 }
 
-visualization_msgs::Marker generateMarkerPoint(std::pair<float, float> _loc, int conv_id)
-{
-	visualization_msgs::Marker marker;
-	marker.header.frame_id = "world";
-	marker.header.stamp = ros::Time(0);
-	marker.ns = "point";
-	marker.id = conv_id;
-	marker.type = visualization_msgs::Marker::CYLINDER;
-	marker.action = visualization_msgs::Marker::ADD;
-	marker.pose.position.x = _loc.first;
-	marker.pose.position.y = _loc.second;
-	marker.pose.position.z = 0.5;
-	marker.pose.orientation.x = 0.0;
-	marker.pose.orientation.y = 0.0;
-	marker.pose.orientation.z = 0.0;
-	marker.pose.orientation.w = 1.0;
-	marker.scale.x = 1;
-	marker.scale.y = 0.1;
-	marker.scale.z = 0.1;
-	marker.color.a = 1.0;
-	marker.color.r = 0.0;
-	marker.color.g = 1.0;
-	marker.color.b = 0.0;
-	marker.mesh_resource = "";
-	return marker;
-}
-
 bool check_collision(float curr_x, float curr_y, float goal_x, float goal_y)
 {
 	bool no_collision = true;
@@ -304,14 +241,26 @@ bool check_collision(float curr_x, float curr_y, float goal_x, float goal_y)
 	{
 		std::pair<float, float> obs = itr->second;
 		float B = 2 * (goal_x*(curr_x - obs.first) + goal_y*(curr_y - obs.second));
-		float C = pow(curr_x - obs.first, 2) + pow(curr_y - obs.second, 2) - 1.5;
+		float C = pow(curr_x - obs.first, 2) + pow(curr_y - obs.second, 2) - 2;
 		float discriminant = B*B - 4*A*C;
 
-		if (C < 0 || (discriminant > 0.05 && discriminant < 1.05)) 
+		if (C <= 0) 
 		{
-			//ROS_INFO("Rejected: (%f, %f), (%f, %f), C, delta: (%f, %f)\n", curr_x, curr_y, obs.first, obs.second, C, discriminant);
+			ROS_INFO("Reject: (%f, %f), (%f, %f), C: %f\n", curr_x, curr_y, obs.first, obs.second, C);
 			no_collision = false;
 			break;
+		}
+
+		if (discriminant >= 0.05 && discriminant <= 1.05) 
+		{
+			float t0 = (- B - sqrt(discriminant)) / (2*A);
+			float t1 = (- B + sqrt(discriminant)) / (2*A);
+			if (t0 > 0 || t1 > 0)
+			{
+				ROS_INFO("Reject: (%f, %f), (%f, %f), delta: %f\n", curr_x, curr_y, obs.first, obs.second, discriminant);
+				no_collision = false;
+				break;
+			}			
 		}
 	}
 
@@ -332,7 +281,7 @@ bool check_collision2(float curr_x, float curr_y, float goal_x, float goal_y)
 		float d_dot_e = dx*ex + dy*ey;
 		float d_dot_d = dx*dx + dy*dy;
 		float e_dot_e = ex*ex + ey*ey;
-		float discriminant = sqrt((d_dot_e*d_dot_e) - d_dot_d*(e_dot_e - 1.5));
+		float discriminant = sqrt((d_dot_e*d_dot_e) - d_dot_d*(e_dot_e - 2));
 		obstacles_checked++;
 		if(discriminant > 0)
 		{
@@ -349,7 +298,6 @@ bool check_collision2(float curr_x, float curr_y, float goal_x, float goal_y)
 			}
 		}
 	}
-	//ROS_INFO("%d obstacles are evaluated.", obstacles_checked);
 	return no_collision;
 }
 
@@ -388,40 +336,52 @@ MapNode* findNearestToGoal(MapTree* c_space, float gx, float gy)
 
 void RapidRandomTree()
 {
-	hector_uav_msgs::Vector samp_point;
-	int convergence_limit = 100;
+	hector_uav_msgs::Vector sp;
+	int convergence_limit = 500;
 	
 	for(int i = 0; i < convergence_limit; i++, _seed += 2)
 	{
 		std::pair<float, float> random_location = random_location_generator(0, 150, _seed);	
-		//ROS_INFO("Point: (%f, %f)", random_location.first, random_location.second);
 		MapNode *sub_nearest = c_space->findNearestTo(random_location);
 
 		if (sub_nearest == NULL)
 			continue;
 
-		//ROS_INFO("Nearest: (%f, %f)\n", sub_nearest->location.first, sub_nearest->location.second);
+		sp.x = random_location.first;
+		sp.y = random_location.second;
+		sp.z = 0;
 
 		if (!check_collision2(random_location.first, random_location.second, sub_nearest->location.first, sub_nearest->location.second))
+		{
+			ROS_INFO("Reject: (%f, %f).", random_location.first, random_location.second);
+			sp.z = -99;
+			samp_pub.publish(sp);
 			continue;
+		}
+		ROS_INFO("Accept: (%f, %f).", random_location.first, random_location.second);
+		samp_pub.publish(sp);
 
-		if ( (3 <= random_location.first && random_location.first <= 7) && 
+		/*if ( (3 <= random_location.first && random_location.first <= 7) && 
 			(-2 <= random_location.second && random_location.second <= 2))
-			ROS_INFO("Better Area point: (%f, %f).", random_location.first, random_location.second);
-		/*visualization_msgs::Marker marker_point = generateMarkerPoint(random_location, i);
-		visual_marker.publish(marker_point);*/
+			ROS_INFO("Better Area point: (%f, %f).", random_location.first, random_location.second);*/
 
 		MapNode* added_node = c_space->addNode(random_location, sub_nearest);
 		c_space->addEdge(sub_nearest, added_node);
 
+		sp.x = sub_nearest->location.first;
+		sp.y = sub_nearest->location.second;
+		sp.z = 99;
+		samp_pub.publish(sp);
 	}
 
 	MapNode* nearest_to_goal = findNearestToGoal(c_space, goalX, goalY);
 	c_space->addEdge(nearest_to_goal, c_space->goal);
 	c_space->goal->parent = nearest_to_goal;
 
-	/*visualization_msgs::Marker marker_point = generateMarkerPoint(c_space->goal->location, 999);
-	visual_marker.publish(marker_point);*/
+	sp.x = nearest_to_goal->location.first;
+	sp.y = nearest_to_goal->location.second;
+	sp.z = 199;
+	samp_pub.publish(sp);
 }
 
 void publish_step_location(std::string uav)
@@ -443,8 +403,9 @@ void publish_step_location(std::string uav)
 		new_simple_goal.pose.orientation.z = 0;
 		new_simple_goal.pose.orientation.w = 1;
 
-		ROS_INFO("Publishing first simple location: (%f, %f).", next_simple_loc.first, next_simple_loc.second);
+		ROS_INFO("Publishing: (%f, %f).", next_simple_loc.first, next_simple_loc.second);
 		uav_step.publish(new_simple_goal);
+		//pub_rate.sleep();
 	}
 	else
 		ROS_INFO("Empty trajectory list... Something might have gone wrong!");
@@ -462,12 +423,14 @@ void modelStateCallback(const gazebo_msgs::ModelStates::ConstPtr& msg)
 			obstacles.insert(std::make_pair(msg->name[i], std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y)));
 
 		total_model_count = current_model_count;
+		ROS_INFO("Models are loaded.");
 	}
 }
 
 void UAVGoalStepCallback(const hector_uav_msgs::Vector::ConstPtr& msg)
 {
 	// Reconsider for the messages that is come in the middle of some path planning / moving
+	ROS_INFO("Ultimate goal is being taken.");
 
 	goalX = msg->x;
 	goalY = msg->y;
@@ -478,11 +441,15 @@ void UAVGoalStepCallback(const hector_uav_msgs::Vector::ConstPtr& msg)
 	RapidRandomTree();
 	std::vector<std::pair<float, float> > P = c_space->BackTraversal();
 	trajectories["quadrotor"] = P;
+	//planning_completed = true;
 	publish_step_location("quadrotor");
 }
 
 void UAVDoneCallback(const hector_uav_msgs::Done::ConstPtr& msg)
 {
+	/*if (!planning_completed)
+		return;*/
+
 	if (!trajectories["quadrotor"].empty())
 		publish_step_location("quadrotor");
 	else 
@@ -506,11 +473,11 @@ int main(int argc, char** argv)
 	_seed = rand();
 
 	ros::Subscriber model_sub = node.subscribe("/gazebo/model_states", 10, &modelStateCallback);
-	uav_goal = node.subscribe("actual_uav_goal", 1, &UAVGoalStepCallback);
-	uav_done = node.subscribe("/Done", 1, &UAVDoneCallback);
+	ros::Subscriber uav_goal = node.subscribe("actual_uav_goal", 1, &UAVGoalStepCallback);
+	ros::Subscriber uav_done = node.subscribe("/Done", 1, &UAVDoneCallback);
+	samp_pub = node.advertise<hector_uav_msgs::Vector>("sampled_point", 1000);
 	uav_step = node.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 1);
 	uav_arrived = node.advertise<std_msgs::String>("ultimate_arrival", 1);
-	visual_marker = node.advertise<visualization_msgs::Marker>("visualization_marker", 10);
 
 	ros::spin();
 	return 0;
