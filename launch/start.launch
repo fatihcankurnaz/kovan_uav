@@ -1,18 +1,23 @@
 <?xml version="1.0"?>
-
 <launch>
-  <arg name="world" default="worlds/custom.world"/>
-  <arg name="gui" default="true"/>
-  <arg name="args" default=""/>
-  
-  <param name="/use_sim_time" value="true" />
+	<arg name="world" default="$(find hector_manipulator)/worlds/new.world" />
+	<arg name="gui" default="true" />
+	<arg name="args" default="" />
+	  
+	<param name="/use_sim_time" value="true" />
+	<!--rosparam file="$(find hector_manipulator)/param/params.yaml" /-->
 
-  <node name="gazebo" pkg="gazebo_ros" type="gzserver" args="$(arg world) $(arg args)" respawn="false" output="screen"/>
-  
-    <!-- start gui -->
-  <group if="$(arg gui)">
-    <node name="gazebo_gui" pkg="gazebo_ros" type="gzclient" respawn="false" output="screen"/>
-  </group>
+	<node name="gazebo" pkg="gazebo_ros" type="gzserver" args="$(arg world) $(arg args)" respawn="false" output="screen" />
+	 
+	<!-- start gui -->
+	<group if="$(arg gui)">
+		<node name="gazebo_gui" pkg="gazebo_ros" type="gzclient" respawn="false" output="screen" />
+	</group>
 
+	<!--
+	<node pkg="hector_manipulator" type="quad_manipulator2" name="quad_controller" output="screen" />
+	<node pkg="hector_manipulator" type="motion_planner3" name="quad_motion_planner" output="screen" />
+	<node pkg="hector_manipulator" type="quad_user_interface" name="quad_UI" output="screen" />
+	-->
 
 </launch>
