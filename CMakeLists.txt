@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   hector_quadrotor_demo
   control_toolbox
   roscpp
+  rospy
   std_msgs
   tf
   hector_uav_msgs
@@ -20,7 +21,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 
 
 catkin_package(
-	CATKIN_DEPENDS roscpp tf hector_quadrotor_demo hector_uav_msgs 
+	CATKIN_DEPENDS roscpp rospy tf hector_quadrotor_demo hector_uav_msgs 
 )
 
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})

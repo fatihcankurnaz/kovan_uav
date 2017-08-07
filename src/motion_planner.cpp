@@ -9,6 +9,7 @@
 #include <ctime>
 #include <cmath>
 #include <utility>
+#include <iomanip> 
 
 typedef struct MapNode MapNode;
 typedef struct MapEdge MapEdge;
@@ -60,7 +61,7 @@ class MapTree {
 			goal = new MapNode();
 			goal->location = _loc;
 			goal->euclidean_dist_to_goal = 0;
-			V.push_back(goal);
+			//V.push_back(goal);
 		}
 		~MapTree() 
 		{
@@ -107,15 +108,14 @@ class MapTree {
 
 		MapNode* findNearestTo(std::pair<float, float> point) 
 		{
-			int index = -1;
+			int index = 0;
 			double min_dist = sqrt(pow(V[0]->location.first - point.first, 2) + 
 				pow(V[0]->location.second - point.second, 2));
 			int N = V.size();
 			for (int i=1; i<N; i++)
 			{
-				std::pair<float, float> pt = V[i]->location;
-				if (pt.first == goal->location.first && pt.second == goal->location.second)
-					continue;
+				/*if (pt.first == goal->location.first && pt.second == goal->location.second)
+					continue;*/
 
 				double curr_dist = sqrt(pow(V[i]->location.first - point.first, 2) + 
 					pow(V[i]->location.second - point.second, 2));
@@ -126,8 +126,8 @@ class MapTree {
 				}
 			}
 
-			if (index == -1)
-				return NULL;
+			/*if (index == -1)
+				return NULL;*/
 
 			return V[index];
 		}
@@ -235,62 +235,33 @@ std::pair<float, float> random_location_generator(int min, int max, unsigned int
 bool check_collision(float curr_x, float curr_y, float goal_x, float goal_y)
 {
 	bool no_collision = true;
-	float A = goal_x * goal_x + goal_y * goal_y;
-	std::map<std::string, std::pair<float, float> >::iterator itr = obstacles.begin();
-	for(; itr != obstacles.end(); itr++)
-	{
-		std::pair<float, float> obs = itr->second;
-		float B = 2 * (goal_x*(curr_x - obs.first) + goal_y*(curr_y - obs.second));
-		float C = pow(curr_x - obs.first, 2) + pow(curr_y - obs.second, 2) - 2;
-		float discriminant = B*B - 4*A*C;
-
-		if (C <= 0) 
-		{
-			ROS_INFO("Reject: (%f, %f), (%f, %f), C: %f\n", curr_x, curr_y, obs.first, obs.second, C);
-			no_collision = false;
-			break;
-		}
-
-		if (discriminant >= 0.05 && discriminant <= 1.05) 
-		{
-			float t0 = (- B - sqrt(discriminant)) / (2*A);
-			float t1 = (- B + sqrt(discriminant)) / (2*A);
-			if (t0 > 0 || t1 > 0)
-			{
-				ROS_INFO("Reject: (%f, %f), (%f, %f), delta: %f\n", curr_x, curr_y, obs.first, obs.second, discriminant);
-				no_collision = false;
-				break;
-			}			
-		}
-	}
-
-	return no_collision;
-}
-
-bool check_collision2(float curr_x, float curr_y, float goal_x, float goal_y)
-{
-	bool no_collision = true;
 	float dx = curr_x - goal_x;
 	float dy = curr_y - goal_y;
 	int obstacles_checked = 0;
 	std::map<std::string, std::pair<float, float> >::iterator itr = obstacles.begin();
 	for(; itr != obstacles.end(); itr++)
 	{
-		std::pair<float, float> obs = itr->second;
+		std::pair<float, float> obs = itr->second; //obstacle origin.
 		float ex = curr_x - obs.first, ey = curr_y - obs.second;
+		
 		float d_dot_e = dx*ex + dy*ey;
 		float d_dot_d = dx*dx + dy*dy;
 		float e_dot_e = ex*ex + ey*ey;
-		float discriminant = sqrt((d_dot_e*d_dot_e) - d_dot_d*(e_dot_e - 2));
+		if(e_dot_e < 1.5){
+			no_collision = false;
+			break;
+		}
+		float discriminant = sqrt((d_dot_e*d_dot_e) - d_dot_d*(e_dot_e - 1.5));
+		
 		obstacles_checked++;
 		if(discriminant > 0)
 		{
 			float t1 = (-d_dot_e + discriminant) / d_dot_d;
 			float t2 = (-d_dot_e - discriminant) / d_dot_d;
-
+			
 			bool t1_pos = t1 > 0.05 && t1 < 1.05;
-			bool t2_pos = t2 > 0.05 && t2 < 1.05;
-
+			bool t2_pos = t2 < -0.05 && t2 > -1.05;
+			//std::cout<<"Discriminant of point from("<<curr_x<<","<<curr_y<<") to ("<<goal_x<<","<<goal_y<<") = "<<discriminant<<", t1 = "<<std::setprecision(2)<<t1<<", t2 = "<<std::setprecision(2)<<t2<<std::endl;
 			if (t1_pos || t2_pos)
 			{
 				no_collision = false;
@@ -307,7 +278,7 @@ MapNode* findNearestToGoal(MapTree* c_space, float gx, float gy)
 	std::vector<MapNode*>::iterator it = c_space->V.begin(), last = c_space->V.end(), ntg;
 	for (; it != last; it++)
 	{
-		if (check_collision2((*it)->location.first, (*it)->location.second, gx, gy))
+		if (check_collision((*it)->location.first, (*it)->location.second, gx, gy))
 			reachables.push_back(*it);
 	}
 
@@ -337,28 +308,25 @@ MapNode* findNearestToGoal(MapTree* c_space, float gx, float gy)
 void RapidRandomTree()
 {
 	hector_uav_msgs::Vector sp;
-	int convergence_limit = 500;
+	int convergence_limit = 750;
 	
 	for(int i = 0; i < convergence_limit; i++, _seed += 2)
 	{
 		std::pair<float, float> random_location = random_location_generator(0, 150, _seed);	
 		MapNode *sub_nearest = c_space->findNearestTo(random_location);
 
-		if (sub_nearest == NULL)
-			continue;
-
 		sp.x = random_location.first;
 		sp.y = random_location.second;
 		sp.z = 0;
 
-		if (!check_collision2(random_location.first, random_location.second, sub_nearest->location.first, sub_nearest->location.second))
+		if (!check_collision(random_location.first, random_location.second, sub_nearest->location.first, sub_nearest->location.second))
 		{
-			ROS_INFO("Reject: (%f, %f).", random_location.first, random_location.second);
+			//ROS_INFO("Reject: (%f, %f).", random_location.first, random_location.second);
 			sp.z = -99;
 			samp_pub.publish(sp);
 			continue;
 		}
-		ROS_INFO("Accept: (%f, %f).", random_location.first, random_location.second);
+		//ROS_INFO("Accept: (%f, %f).", random_location.first, random_location.second);
 		samp_pub.publish(sp);
 
 		/*if ( (3 <= random_location.first && random_location.first <= 7) && 
@@ -447,8 +415,6 @@ void UAVGoalStepCallback(const hector_uav_msgs::Vector::ConstPtr& msg)
 
 void UAVDoneCallback(const hector_uav_msgs::Done::ConstPtr& msg)
 {
-	/*if (!planning_completed)
-		return;*/
 
 	if (!trajectories["quadrotor"].empty())
 		publish_step_location("quadrotor");

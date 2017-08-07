@@ -100,7 +100,7 @@
           <geometry>
             <mesh>
               <scale>1 1 1</scale>
-              <uri>/home/burak/catkin_ws/src/hector_quadrotor-kinetic-devel/hector_quadrotor_description/meshes/quadrotor/quadrotor_base.stl</uri>
+              <uri>/home/tahsin/catkin_ws/src/hector_quadrotor-kinetic-devel/hector_quadrotor_description/meshes/quadrotor/quadrotor_base.stl</uri>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -164,7 +164,7 @@
           <geometry>
             <mesh>
               <scale>1 1 1</scale>
-              <uri>/home/burak/catkin_ws/src/hector_quadrotor-kinetic-devel/hector_quadrotor_description/meshes/quadrotor/quadrotor_base.dae</uri>
+              <uri>/home/tahsin/catkin_ws/src/hector_quadrotor-kinetic-devel/hector_quadrotor_description/meshes/quadrotor/quadrotor_base.dae</uri>
             </mesh>
           </geometry>
         </visual>
