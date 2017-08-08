@@ -2,8 +2,8 @@
 <launch>
 	<rosparam file="$(find hector_manipulator)/param/params.yaml" />
 	<node pkg="hector_manipulator" type="quad_manipulator" name="quad_controller" output="screen" />
-	<node pkg="hector_manipulator" type="motion_planner" name="quad_motion_planner" output="screen" />
-	<!--node pkg="hector_manipulator" type="motion_planner_ompl" name="planner_with_ompl" output="screen" /-->
-	<node pkg="hector_manipulator" type="pyk.py" name="map_visualized" output="screen" />
+	<!--node pkg="hector_manipulator" type="motion_planner" name="quad_motion_planner" output="screen" /-->
+	<node pkg="hector_manipulator" type="motion_planner_ompl" name="planner_with_ompl" output="screen" />
+	<!--node pkg="hector_manipulator" type="pyk.py" name="map_visualized" output="screen" /-->
 	<node pkg="hector_manipulator" type="quad_user_interface" name="quad_UI" output="screen" />
 </launch>

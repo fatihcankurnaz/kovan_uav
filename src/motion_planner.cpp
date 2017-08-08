@@ -126,9 +126,6 @@ class MapTree {
 				}
 			}
 
-			/*if (index == -1)
-				return NULL;*/
-
 			return V[index];
 		}
 
@@ -162,59 +159,6 @@ class MapTree {
 			return the_path;
 		}
 
-		/*std::vector<std::pair<float, float> > A_star_search()
-		{
-			refreshNodes();
-			std::map<MapNode*, double> open_list;
-			open_list.insert(std::make_pair(robot, robot->euclidean_dist_to_goal));
-			MapNode* the_goal_node;
-			bool goal_found = false;
-			double total_path_cost = 0;
-
-			while(!open_list.empty() && !goal_found)
-			{
-				std::map<MapNode*, double>::iterator next_to_expand = find_min_f(open_list);
-				total_path_cost = next_to_expand->second - next_to_expand->first->euclidean_dist_to_goal;
-				if (next_to_expand == open_list.end())
-					return std::vector<std::pair<float, float> >();
-
-				MapNode* next_node = next_to_expand->first;
-				next_node->visited = true;
-				open_list.erase(next_to_expand);
-
-				std::vector<MapEdge*>::iterator it = next_node->neighbours.begin();
-				for(; it != next_node->neighbours.end(); it++)
-				{
-					if ((*it)->neighbour->visited)
-						continue;
-
-					if ((*it)->neighbour->euclidean_dist_to_goal == 0)
-					{
-						goal_found = true;
-						open_list.insert(std::make_pair((*it)->neighbour, total_path_cost + (*it)->cost));
-						//the_goal_node = (*it)->neighbour;
-						break;
-					}
-
-					double f = total_path_cost + (*it)->cost + (*it)->neighbour->euclidean_dist_to_goal;
-					open_list.insert(std::make_pair((*it)->neighbour, f));
-				}
-			}
-
-			if (goal_found)
-			{
-				the_goal_node = goal;
-				std::vector<std::pair<float, float> > path;
-				while(the_goal_node != NULL)
-				{
-					path.push_back(the_goal_node->location);
-					the_goal_node = the_goal_node->parent;
-				}
-				return path;
-			}
-
-			return std::vector<std::pair<float, float> >();
-		}*/
 };
 
 MapTree *c_space;
@@ -308,7 +252,7 @@ MapNode* findNearestToGoal(MapTree* c_space, float gx, float gy)
 void RapidRandomTree()
 {
 	hector_uav_msgs::Vector sp;
-	int convergence_limit = 750;
+	int convergence_limit = 1000;
 	
 	for(int i = 0; i < convergence_limit; i++, _seed += 2)
 	{
@@ -326,12 +270,8 @@ void RapidRandomTree()
 			samp_pub.publish(sp);
 			continue;
 		}
-		//ROS_INFO("Accept: (%f, %f).", random_location.first, random_location.second);
 		samp_pub.publish(sp);
 
-		/*if ( (3 <= random_location.first && random_location.first <= 7) && 
-			(-2 <= random_location.second && random_location.second <= 2))
-			ROS_INFO("Better Area point: (%f, %f).", random_location.first, random_location.second);*/
 
 		MapNode* added_node = c_space->addNode(random_location, sub_nearest);
 		c_space->addEdge(sub_nearest, added_node);
