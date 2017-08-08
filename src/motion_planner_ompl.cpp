@@ -9,7 +9,7 @@
 
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
-#include <hector_uav_msgs/Done.h>
+#include <hector_uav_msgs/myDone.h>
 #include <hector_uav_msgs/Vector.h>
 #include <std_msgs/String.h>
 #include <gazebo_msgs/ModelStates.h>
@@ -17,24 +17,95 @@
 #include <ctime>
 #include <vector>
 #include <utility>
+#include <functional>
 #include <cmath>
 #include <map>
 
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
-ros::Publisher step_cmd, arrived;
-std::map<std::string, std::vector< std::pair<float,float> > > paths;
+ros::Publisher step_cmd, arrived, samp_pub;
+std::map<std::string, std::vector<std::pair<float, float> > > paths;
 std::vector<std::pair<float, float> > obstacle_list;
 std::pair<float, float> robot_pos, goal_pos;
 clock_t timeBeforePlanning;
 int total_model_count = 2;
+bool first_end_published = false;
+
+void publishVisualPointSample(const ob::State* s, bool validity)
+{
+	ROS_INFO("Visual point publishing...");
+	hector_uav_msgs::Vector p;
+	const ob::SE2StateSpace::StateType *se2state = s->as<ob::SE2StateSpace::StateType>();
+	p.x = se2state->getX();
+	p.y = se2state->getY();
+
+	if (!validity)
+		p.z = -99;
+	else if(!first_end_published)
+	{
+		p.z = 0;
+		first_end_published = true;
+	}
+	else
+	{
+		p.z = 99;
+		first_end_published = false;
+	}
+	ROS_INFO("Publishing...");
+	samp_pub.publish(p);
+}
+
+class VisualSupportedSampler : public ob::ValidStateSampler
+{
+	protected:
+		ob::StateSamplerPtr sampler_;
+
+	public:
+	    VisualSupportedSampler(const ob::SpaceInformation *si) : ob::ValidStateSampler(si), sampler_(si->allocStateSampler())
+	    {
+	        name_ = "visual supported";
+	    }
+
+	    bool sample(ob::State *state) override
+	    {
+	        unsigned int attempts = 0;
+		    bool valid = false;
+		    do
+		    {
+		        sampler_->sampleUniform(state);
+		        valid = si_->isValid(state);
+		        ROS_INFO("Next is publishing point to pygame...");
+		        publishVisualPointSample(state, valid);
+		        ++attempts;
+		    } while (!valid && attempts < attempts_);
+		    return valid;
+	    }
+
+	    bool sampleNear(ob::State *state, const ob::State *near, const double distance) override
+	    {
+	    	unsigned int attempts = 0;
+			bool valid = false;
+			do
+			{
+				sampler_->sampleUniformNear(state, near, distance);
+				valid = si_->isValid(state);
+				ROS_INFO("Next is publishing point to pygame...");
+				publishVisualPointSample(state, valid);
+				++attempts;
+			} while (!valid && attempts < attempts_);
+			return valid;
+	    }
+};
+
+ob::ValidStateSamplerPtr allocVisualSupportedSampler(const ob::SpaceInformation *si)
+{
+    return std::make_shared<VisualSupportedSampler>(si);
+}
 
 bool isStateValid(const ob::State* state)
 {
     const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
-    //const ob::RealVectorStateSpace::StateType *pos = se2state->as<ob::RealVectorStateSpace::StateType>(0);
-    //const ob::SO3StateSpace::StateType *rot = se3state->as<ob::SO3StateSpace::StateType>(1);
 
     // Check state if its in any of the occupied obstacle areas or the ones inflated with robot's radius
     float sx = se2state->getX();
@@ -44,7 +115,7 @@ bool isStateValid(const ob::State* state)
     {
     	// obstacles are unit spheres (unit circles when projected on 2D) with 0.5 m as their radius
     	// inflation radius (the radius that wraps the quadrotor properly) is at least 0.5 m
-    	float result = pow(obs->first - sx, 2) + pow(obs->second - sy, 2) - 1.5;
+    	float result = pow(obs->first - sx, 2) + pow(obs->second - sy, 2) - 1;
     	if (result < 0) // The state falls into either an inner region of an obstacle or an inflation area
     		return false;
     }
@@ -52,36 +123,45 @@ bool isStateValid(const ob::State* state)
     return true;
 }
 
-ob::ValidStateSamplerPtr allocOBValidStateSampler(const ob::SpaceInformation *si)
+bool terminalCondition()
 {
-    // we can perform any additional setup / configuration of a sampler here,
-    // but there is nothing to tweak in case of the ObstacleBasedValidStateSampler.
-    return std::make_shared<ob::ObstacleBasedValidStateSampler>(si);
+	clock_t checkTime = clock() - timeBeforePlanning;
+	float seconds_passed = ((float)checkTime) / CLOCKS_PER_SEC;
+	if (seconds_passed >= 1.0)
+	{
+		ROS_INFO("Termination achieved.");
+		return true;
+	}
+
+	return false;
 }
 
 void publishStep(std::string uav)
 {
 	if (!paths[uav].empty())
 	{
-        
-		std::vector< std::pair<float,float> >::iterator step_itr = paths[uav].begin();
-		        
-		geometry_msgs::PoseStamped step;
-		step.header.stamp = ros::Time(0);
-		step.header.frame_id = "world";
+		try {
+			std::pair<float, float> step_loc = paths[uav].front();
+			std::vector<std::pair<float, float> >::iterator step_itr = paths[uav].begin();
+			paths[uav].erase(step_itr);
 
-        step.pose.position.x = step_itr->first;
-		step.pose.position.y = step_itr->second;
-        paths[uav].erase(step_itr);
+			geometry_msgs::PoseStamped step;
+			step.header.stamp = ros::Time(0);
+			step.header.frame_id = "world";
+			step.pose.position.x = step_loc.first;
+			step.pose.position.y = step_loc.second;
+			step.pose.position.z = 0.5;
+			step.pose.orientation.x = 0;
+			step.pose.orientation.y = 0;
+			step.pose.orientation.z = 0;
+			step.pose.orientation.w = 1;
 
-        step.pose.position.z = 0.5;
-		step.pose.orientation.x = 0;
-		step.pose.orientation.y = 0;
-		step.pose.orientation.z = 0;
-		step.pose.orientation.w = 1;
-
-		step_cmd.publish(step);
-    }
+			ROS_INFO("Publishing step message.");
+			step_cmd.publish(step);
+		} catch (std::exception exp) {
+			ROS_INFO(exp.what());
+		}
+	}
 	else
 		ROS_INFO("Either quadrotor arrived or no path found!");
 }
@@ -131,23 +211,7 @@ std::vector<ob::State*> simpleSetupPlanning()
     return std::vector<ob::State*>();
 }
 
-bool terminalCondition()
-{
-    clock_t checkTime = clock() - timeBeforePlanning;
-    float seconds_passed = ((float)checkTime) / CLOCKS_PER_SEC;
-    if (seconds_passed >= 1.5)
-    {
-        ROS_INFO("Termination achieved.");
-        return true;
-    }
-    else
-    {
-        //ROS_INFO("Continuing ...");
-        return false;
-    }
-}
-
-void manualPlanning()
+std::vector<std::pair<float, float> > manualPlanning()
 {
     ob::StateSpacePtr space(new ob::SE2StateSpace());
     ob::RealVectorBounds bounds(2);
@@ -156,7 +220,8 @@ void manualPlanning()
     space->as<ob::SE2StateSpace>()->setBounds(bounds);
 
     ob::SpaceInformationPtr si(new ob::SpaceInformation(space));
-    si->setStateValidityChecker(isStateValid);
+    si->setValidStateSamplerAllocator(allocVisualSupportedSampler);
+    si->setStateValidityChecker(std::bind(&isStateValid, std::placeholders::_1));
     si->setMotionValidator(std::make_shared<ob::DiscreteMotionValidator>(si));
     si->setStateValidityCheckingResolution(0.05);
 
@@ -177,36 +242,32 @@ void manualPlanning()
     planner->setProblemDefinition(pdef);
     planner->setup();
 
-    ob::PlannerTerminationConditionFn f = &terminalCondition;
-    ob::PlannerTerminationCondition ptc(f);
-    ob::PlannerStatus solved = planner->solve(ptc);
+    std::function<bool()> pTerminationCondFn = terminalCondition;
+    ob::PlannerStatus solved = planner->solve(pTerminationCondFn);
 
     if (solved)
     {
         ROS_INFO("Found a solution!");
-        ob::PathPtr p = pdef->getSolutionPath();
-        //p->print(std::cout);
-
-        og::PathGeometric* path = (*p).as<og::PathGeometric> ();
-        std::vector<ob::State*> path_states = path->getStates();
-       
-        for(unsigned int i=0;i<path_states.size();i++){
-                const ob::State* state = path_states[i];
-                const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
-                float x = se2state->getX();
-                float y = se2state->getY();
-                paths["quadrotor"].emplace_back(std::make_pair(x,y)); 
+        og::PathGeometric path = *pdef->getSolutionPath()->as<og::PathGeometric>();
+        std::vector<std::pair<float, float> > path_states;
+        std::vector<ob::State*>::iterator itr = path.getStates().begin();
+        for (; itr != path.getStates().end(); itr++)
+        {
+        	ob::SE2StateSpace::StateType *nextState = (*itr)->as<ob::SE2StateSpace::StateType>();
+        	path_states.push_back(std::make_pair(nextState->getX(), nextState->getY()));
         }
-       
+
+        path.print(std::cout);
+        return path_states;
     }
     else
     {
     	ROS_INFO("No solution is found!");
-    	paths["quadrotor"] = std::vector< std::pair<float,float> >();
+    	return std::vector<std::pair<float, float> >();
     }
 }
 
-void UAV_StepDone(const hector_uav_msgs::Done::ConstPtr& msg)
+void UAV_StepDone(const hector_uav_msgs::myDone::ConstPtr& msg)
 {
 	if (!paths["quadrotor"].empty())
 		publishStep("quadrotor");
@@ -235,7 +296,9 @@ void UAV_MainGoal(const hector_uav_msgs::Vector::ConstPtr& goal)
 	goal_pos.second = goal->y;
 
 	// std::vector<ob::State*> goal_path = simpleSetupPlanning();
-	manualPlanning();
+	timeBeforePlanning = clock();
+	std::vector<std::pair<float, float> > goal_path = manualPlanning();
+    paths["quadrotor"] = goal_path;
 	publishStep("quadrotor");
 }
 
@@ -245,10 +308,11 @@ int main(int argc, char** argv)
 	ros::NodeHandle node;
 
 	ros::Subscriber model_sub = node.subscribe("/gazebo/model_states", 10, &loadModels);
-	ros::Subscriber done_sub = node.subscribe("/Done", 1, &UAV_StepDone);
+	ros::Subscriber myDone_sub = node.subscribe("/myDone", 1, &UAV_StepDone);
 	ros::Subscriber mainGoal_sub = node.subscribe("actual_uav_goal", 1, &UAV_MainGoal);
 	step_cmd = node.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 1);
 	arrived = node.advertise<std_msgs::String>("ultimate_arrival", 1);
+	samp_pub = node.advertise<hector_uav_msgs::Vector>("sampled_point", 1000);
 
 	ros::spin();
 	return 0;
