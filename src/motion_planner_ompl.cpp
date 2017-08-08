@@ -14,8 +14,10 @@
 #include <std_msgs/String.h>
 #include <gazebo_msgs/ModelStates.h>
 
+#include <ctime>
 #include <vector>
 #include <utility>
+#include <functional>
 #include <cmath>
 #include <map>
 
@@ -26,7 +28,7 @@ ros::Publisher step_cmd, arrived;
 std::map<std::string, std::vector<ob::State*> > paths;
 std::vector<std::pair<float, float> > obstacle_list;
 std::pair<float, float> robot_pos, goal_pos;
-
+clock_t timeBeforePlanning;
 int total_model_count = 2;
 
 bool isStateValid(const ob::State* state)
@@ -56,6 +58,22 @@ ob::ValidStateSamplerPtr allocOBValidStateSampler(const ob::SpaceInformation *si
     // we can perform any additional setup / configuration of a sampler here,
     // but there is nothing to tweak in case of the ObstacleBasedValidStateSampler.
     return std::make_shared<ob::ObstacleBasedValidStateSampler>(si);
+}
+
+bool terminalCondition()
+{
+	clock_t checkTime = clock() - timeBeforePlanning;
+	float seconds_passed = ((float)checkTime) / CLOCKS_PER_SEC;
+	if (seconds_passed >= 1.0)
+	{
+		ROS_INFO("Termination achieved.");
+		return true;
+	}
+	else
+	{
+		//ROS_INFO("Continuing ...");
+		return false;
+	}
 }
 
 void publishStep(std::string uav)
@@ -161,15 +179,19 @@ std::vector<ob::State*> manualPlanning()
     //si->printSettings(std::cout);
     //pdef->print(std::cout);
 
-    // WRONG !!! RRTstar solves only with a PlannerTerminationConditionFn
-    ob::PlannerStatus solved = planner->solve(2.0);
+    std::function<bool()> pTerminationCondFn = terminalCondition;
+    ob::PlannerStatus solved = planner->solve(pTerminationCondFn);
 
     if (solved)
     {
         ROS_INFO("Found a solution!");
-        og::PathGeometric path( dynamic_cast< const og::PathGeometric& >( *pdef->getSolutionPath()));
-        std::vector<ob::State*> path_states = path.getStates();
-        return path_states;
+        ob::PathPtr path = pdef->getSolutionPath();
+        // og::PathGeometric path( dynamic_cast< og::PathGeometric& >( *pdef->getSolutionPath() ) );
+        // og::PathGeometric path = *pdef->getSolutionPath()->as<og::PathGeometric>();
+        // std::vector<ob::State*> path_states = path.getStates();
+        path->print(std::cout);
+        // return path_states;
+        return std::vector<ob::State*>();
     }
     else
     {
@@ -207,6 +229,7 @@ void UAV_MainGoal(const hector_uav_msgs::Vector::ConstPtr& goal)
 	goal_pos.second = goal->y;
 
 	// std::vector<ob::State*> goal_path = simpleSetupPlanning();
+	timeBeforePlanning = clock();
 	std::vector<ob::State*> goal_path = manualPlanning();
     paths["quadrotor"] = goal_path;
 	publishStep("quadrotor");
