@@ -156,10 +156,10 @@ public:
 					}
 					// corrects the position of the quadro by giving velocity
 		
-					vel_msg.linear.x = x * 0.6;
-					vel_msg.linear.y = y * 0.6;
+					vel_msg.linear.x = x * 0.8;
+					vel_msg.linear.y = y * 0.8;
 					vel_msg.linear.z = z;
-					vel_msg.angular.z = 3 * pid_.yaw.computeCommand(yaw_error, period);
+					vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
 
 					correspondingQuad->quad_vel.publish(vel_msg);
 				}
