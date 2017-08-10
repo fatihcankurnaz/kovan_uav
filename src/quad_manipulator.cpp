@@ -21,9 +21,6 @@
 #define EQUAL_CONST 0.05
 
 
-void goalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
-void quadPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
-
 
 //std::vector<std::thread*> quadrotorThreads;
 struct 
@@ -62,20 +59,20 @@ public:
 				desired_achived = false;
 				operating = false;
 				yaw_command = 0;
-				engage_motors = node.serviceClient<hector_uav_msgs::EnableMotors>(/*"/"+quad_name+*/"/enable_motors");
+				engage_motors = node.serviceClient<hector_uav_msgs::EnableMotors>("/"+quad_name+"/enable_motors");
 				hector_uav_msgs::EnableMotors srv;
 				srv.request.enable = true;
 				if(engage_motors.call(srv)){
 					if(srv.response.success){
-						ROS_INFO("Motors are enabled");		
+						ROS_INFO("%s motors are enabled",quad_name.c_str());		
 					}
 				}
-				goal_sub = node.subscribe<geometry_msgs::PoseStamped>(/*"/" + quad_name + */"/move_base_simple/goal", 10, 
+				goal_sub = node.subscribe<geometry_msgs::PoseStamped>("/" + quad_name + "/move_base_simple/goal", 10, 
 					boost::bind(&QuadController::goalPoseCallback, this,quad_name, _1));
-				quad_sub = node.subscribe<geometry_msgs::PoseStamped>(/*"/"+quad_name+*/"/ground_truth_to_tf/pose", 10, 
+				quad_sub = node.subscribe<geometry_msgs::PoseStamped>("/"+quad_name+"/ground_truth_to_tf/pose", 10, 
 					boost::bind(&QuadController::quadPoseCallback, this,quad_name, _1));
-				quad_vel = node.advertise<geometry_msgs::Twist>(/*"/"+quad_name+*/"/cmd_vel", 10);
-				quad_done = node.advertise<hector_uav_msgs::Done>(/*"/"+quad_name+*/"Done", 10);
+				quad_vel = node.advertise<geometry_msgs::Twist>("/"+quad_name+"/cmd_vel", 10);
+				quad_done = node.advertise<hector_uav_msgs::Done>("/"+quad_name+"/Done", 10);
 			}
 
 			void goalPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
@@ -87,7 +84,7 @@ public:
 				double x = msg->pose.position.x;
 				double y = msg->pose.position.y;
 				double z = msg->pose.position.z;
-
+				ROS_INFO("%s : Step goal is (%f,%f,%f)",robot_frame.c_str(),x,y,z);
 				double temp;
 				tf::Quaternion q(msg->pose.orientation.x, msg->pose.orientation.y, 
 					msg->pose.orientation.z, msg->pose.orientation.w);
@@ -114,7 +111,8 @@ public:
 				correspondingQuad->quadPose.pose.position.x = msg->pose.position.x;
 				correspondingQuad->quadPose.pose.position.y = msg->pose.position.y;
 				correspondingQuad->quadPose.pose.position.z = msg->pose.position.z;
-
+				//if(robot_frame == "uav1")
+					//ROS_INFO("PoseCallback for %s",robot_frame.c_str());
 				geometry_msgs::Twist vel_msg;
 				ros::Duration period(0.1);
 
@@ -176,28 +174,7 @@ public:
 //Recall that, static member variables of a class must be properly initialized/constructed outside of the class.
 std::map<std::string, Wrapper::QuadController*> Wrapper::activeQuadrotors;
 
-void spawnCallback(ros::NodeHandle& nh,const gazebo_msgs::ModelStatesConstPtr& msg)
-{
-	size_t name_size = msg->name.size();
-	if(name_size>1 && name_size!=total_model_count)
-	{
-		for(size_t i=1;i<name_size;i++)
-		{
-			size_t found = msg->name[i].find("uav");
-			std::map <std::string, Wrapper::QuadController*>::iterator it;
-			it = Wrapper::activeQuadrotors.find(msg->name[i]);
 
-			if (found!=std::string::npos && it == Wrapper::activeQuadrotors.end())
-			{
-				Wrapper::QuadController* new_quad_controller = new Wrapper::QuadController(nh,msg->name[i]);
-				Wrapper::activeQuadrotors.insert(std::pair<std::string, Wrapper::QuadController*>(msg->name[i],new_quad_controller));
-				//ROS_INFO("[%s] is registered to active Quadrotors",msg->name[i].c_str());
-			}
-			//ROS_INFO("Name is = %s", msg->name[i].c_str());
-		}
-	}
-		
-}
 int main(int argc, char **argv) 
 {
 	ros::init(argc, argv, "quad_manipulator");
@@ -207,15 +184,12 @@ int main(int argc, char **argv)
 	pid_.z.init(ros::NodeHandle(root_node, "z"));
 	pid_.yaw.init(ros::NodeHandle(root_node, "yaw"));
 
-	/*ros::Subscriber model_listener_sub = root_node.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states", 2, 
-		boost::bind(spawnCallback, root_node, _1));*/
 
-	Wrapper::QuadController* new_quad_controller1 = new Wrapper::QuadController(root_node, "quadrotor");
-
-    //Wrapper::QuadController* new_quad_controller1 = new Wrapper::QuadController(root_node,"uav1");
-    /*Wrapper::QuadController* new_quad_controller2 = new Wrapper::QuadController(root_node,"uav2");
-    Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
-    Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");*/
+	
+    Wrapper::QuadController* new_quad_controller1 = new Wrapper::QuadController(root_node,"uav1");
+    Wrapper::QuadController* new_quad_controller2 = new Wrapper::QuadController(root_node,"uav2");
+    //Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
+    //Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");
 
 	ros::Rate rate(1000);
 	while(ros::ok()) {

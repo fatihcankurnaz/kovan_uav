@@ -2,7 +2,7 @@
 #include <hector_uav_msgs/Vector.h>
 #include <std_msgs/String.h>
 
-ros::Publisher ultimate_goal_pub;
+ros::Publisher ultimate_goal_pub_uav1,ultimate_goal_pub_uav2;
 
 void UAVArrivedGoalCallback(const std_msgs::String::ConstPtr& msg)
 {
@@ -23,17 +23,22 @@ int main(int argc, char** argv)
 	ros::init(argc, argv, "quad_ui");
 	ros::NodeHandle nh;
 
-	ultimate_goal_pub = nh.advertise<hector_uav_msgs::Vector>("actual_uav_goal", 10);
-	ros::Subscriber uav_arrived_sub = nh.subscribe("ultimate_arrival", 10, &UAVArrivedGoalCallback);
+	ultimate_goal_pub_uav1 = nh.advertise<hector_uav_msgs::Vector>("/uav1/actual_uav_goal", 10);
+	ultimate_goal_pub_uav2 = nh.advertise<hector_uav_msgs::Vector>("/uav2/actual_uav_goal", 10);
+	//ros::Subscriber uav_arrived_sub = nh.subscribe("ultimate_arrival", 10, &UAVArrivedGoalCallback);
 
 	ros::Duration(2.0).sleep();
 
-	hector_uav_msgs::Vector _goal;
-	_goal.x = 7.0;
-	_goal.y = 5.0;
-	_goal.z = 0.5;
-	ultimate_goal_pub.publish(_goal);
+	hector_uav_msgs::Vector _goal1, _goal2;
+	_goal1.x = 7.0;
+	_goal1.y = 5.0;
+	_goal1.z = 0.5;
 
+	ultimate_goal_pub_uav1.publish(_goal1);
+	_goal2.x = 4.0;
+	_goal2.y = 7.0;
+	_goal2.z = 0.5;
+	ultimate_goal_pub_uav2.publish(_goal2);
 	ros::spin();
 	return 0;
 }
