@@ -29,10 +29,10 @@ namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
 std::vector<std::pair<float, float> > obstacle_list;
-std::map<std::string, std::vector< std::pair<float,float> > > other_uav_list;
+std::map<std::string, std::vector<std::pair<float, float> > > all_paths;
 
 size_t total_model_count = 2;
-float waiting_duration = 1.5;
+float waiting_duration = 1.0;
 
 
 bool isStateValid(const std::string& quad_name,const ob::State* state)
@@ -54,15 +54,30 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
         if (result < 0) // The state falls into either an inner region of an obstacle or an inflation area
             return false;
     }
-    /*std::vector<std::pair<float, float> >::iterator uav_obs = other_uav_list[quad_name].begin();
-    for(; uav_obs != other_uav_list[quad_name].end(); uav_obs++)
-    {
-        // other uavs must be handled differently than unit sphere obstacles. Hence their radius is different than
-        // unit spheres'. That is 0.5 m each. Theoritecally, 0.5m is a drone's radius as an obstacle and other 0.5m is inflation radius.
-        float result = pow(uav_obs->first - sx,2) + pow(obs->second - sy, 2) - 1.0;
-        if(result < 0)
-            return false;
-    }*/
+   
+    if(!all_paths.empty()){
+        std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
+        float a_square = 0.7 * 0.7; //Elipse's short radius
+        for(;map_itr!=all_paths.end();map_itr++){
+            //ROS_INFO("Path of %s is registered!",(map_itr->first).c_str());
+            for(unsigned int i=0;i<(map_itr->second).size() - 1;i++){
+                std::pair<float, float> next_step, previous_step;
+                previous_step = (map_itr->second)[i];
+                next_step = (map_itr->second)[i+1];
+                float distance_between_step_goals = pow(next_step.first - previous_step.first, 2) + pow(next_step.second - previous_step.second, 2);
+                float b_square =pow(sqrt(distance_between_step_goals) + 0.5, 2); //Ellipse's long radius
+                float ellipse_center_x =  (next_step.first + previous_step.first) / 2;
+                float ellipse_center_y =  (next_step.second + previous_step.second) / 2;
+                float result = (b_square * pow(sx - ellipse_center_x,2)) + (a_square * pow(sy - ellipse_center_y,2)) - (a_square * b_square);
+                if(result < 0)
+                    return false;
+            }
+            
+            
+            
+        }
+
+    }
     
 
     return true;
@@ -187,30 +202,6 @@ class WrapperPlanner{
             {
                 ROS_INFO("Found a solution for %s!",quad_name.c_str());
                 ob::PathPtr p = pdef->getSolutionPath();
-                
-                /* --------- Code from http://www.cplusplus.com/reference/ios/ios/rdbuf/ -------------
-                ob::WrapperPlannerData pd(si);
-                planner->getWrapperPlannerData(pd);
-                
-                std::streambuf *psbuf, *backup;
-                std::ofstream filestr;
-                std::string env_p = std::getenv("HOME");
-                std::string file_path = "Desktop/visualize.graphml";
-                env_p.append(file_path);
-
-                filestr.open(env_p);
-
-                backup = std::cout.rdbuf();     // back up cout's streambuf
-
-                psbuf = filestr.rdbuf();        // get file's streambuf
-                std::cout.rdbuf(psbuf);         // assign streambuf to cout
-
-                pd.printGraphML(std::cout);
-                std::cout.rdbuf(backup);        // restore cout's original streambuf
-
-                filestr.close();
-                
-                /* -----------------------------------------------------------------------------------*/
 
                 og::PathGeometric* path = (*p).as<og::PathGeometric> ();
                 std::vector<ob::State*> path_states = path->getStates();
@@ -223,11 +214,13 @@ class WrapperPlanner{
                         hector_uav_msgs::Vector p;
                         p.x = x;
                         p.y = y;
+                        if(i==0)
+                            p.z = 99;
                         samp_pub.publish(p);
                         paths.emplace_back(std::make_pair(x,y));
 
                 }
-               
+                all_paths[quad_name]= paths;
             }
             else
             {
@@ -277,13 +270,7 @@ void loadModels(const gazebo_msgs::ModelStates::ConstPtr& msg)
 		for (unsigned int i = 1; i < model_count; i++){
             size_t found = msg->name[i].find("uav");
             if(found!=std::string::npos){
-                for(unsigned int j= 1 ; j<model_count;j++){
-                    if(j==i)//Exclude itself.
-                        continue;
-                    size_t inner_found = msg->name[j].find("uav");
-                    if(inner_found!=std::string::npos)
-                        other_uav_list[msg->name[i]].push_back(std::make_pair(msg->pose[j].position.x, msg->pose[j].position.y));
-                }
+                ;
             }
             else
 			    obstacle_list.push_back(std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y));
