@@ -30,7 +30,7 @@ namespace og = ompl::geometric;
 
 std::vector<std::pair<float, float> > obstacle_list;
 std::map<std::string, std::vector<std::pair<float, float> > > all_paths;
-
+std::map<std::string, std::pair<float,float> > uav_list;
 size_t total_model_count = 2;
 float waiting_duration = 1.0;
 
@@ -50,14 +50,23 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
         // obstacles are unit spheres (unit circles when projected on 2D) with 0.5 m as their radius
         // inflation radius (the radius that wraps the quadrotor properly) is at least 0.5 m
         
-        float result = pow(obs->first - sx, 2) + pow(obs->second - sy, 2) - 1.5;
+        float result = pow(obs->first - sx, 2) + pow(obs->second - sy, 2) - 2.0;
         if (result < 0) // The state falls into either an inner region of an obstacle or an inflation area
             return false;
     }
-   
-    if(!all_paths.empty()){
+    /*std::map<std::string,std::pair<float, float> >::iterator uav_itr = uav_list.begin();
+    for(;uav_itr!=uav_list.end();uav_itr++){
+        if(uav_itr->first.compare(quad_name) == 0)
+            continue;
+        else{
+            float result = pow(uav_itr->second.first - sx, 2) + pow(uav_itr->second.second - sy, 2) - 0.5;
+            if(result < 0)
+                return false;
+        }
+    }*/
+    /*if(!all_paths.empty()){
         std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
-        float a_square = 0.7 * 0.7; //Elipse's short radius
+        float a_square = 0.49; //Elipse's short radius
         for(;map_itr!=all_paths.end();map_itr++){
             //ROS_INFO("Path of %s is registered!",(map_itr->first).c_str());
             for(unsigned int i=0;i<(map_itr->second).size() - 1;i++){
@@ -69,15 +78,12 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
                 float ellipse_center_x =  (next_step.first + previous_step.first) / 2;
                 float ellipse_center_y =  (next_step.second + previous_step.second) / 2;
                 float result = (b_square * pow(sx - ellipse_center_x,2)) + (a_square * pow(sy - ellipse_center_y,2)) - (a_square * b_square);
-                if(result < 0)
+                if(result < 0)                    
                     return false;
-            }
-            
-            
-            
+            }     
         }
 
-    }
+    }*/
     
 
     return true;
@@ -106,6 +112,7 @@ class WrapperPlanner{
 
             step_cmd = node.advertise<geometry_msgs::PoseStamped>("/"+quad_name+"/move_base_simple/goal", 1);
             samp_pub = node.advertise<hector_uav_msgs::Vector>("/"+quad_name+"/sampled_point", 1000);
+            //dynamic_obstacle_pub = node.advertise<hector_uav_msgs::Vector>("/"+quad_name+/"/")
             timeBeforePlanning = clock();
 
             p_total_model_count = 2;
@@ -116,7 +123,7 @@ class WrapperPlanner{
             goal_pos.first = goal->x;
             goal_pos.second = goal->y;
 
-            manualPlanning();
+            manualPlanning(robot_pos.first,robot_pos.second,goal_pos.first,goal_pos.second);
             publishStep();
       }
       void UAV_StepDone(const std::string& robot_frame,const hector_uav_msgs::Done::ConstPtr& msg)
@@ -155,21 +162,18 @@ class WrapperPlanner{
 
             }
             else
-            {
-                //ROS_INFO("Continuing ...");
                 return false;
-            }
       }
 
 
-      void manualPlanning()
+      void manualPlanning(float robotX,float robotY, float goalX,float goalY)
       {
             ob::StateSpacePtr space(new ob::SE2StateSpace());
             ob::RealVectorBounds bounds(2);
             bounds.setLow(-10);
             bounds.setHigh(10);
             space->as<ob::SE2StateSpace>()->setBounds(bounds);
-            ROS_INFO("Manual planning for %s",quad_name.c_str());
+            ROS_INFO("Manual planning for %s : initial_point(%.2f,%.2f)",quad_name.c_str(),robotX,robotY);
             ob::SpaceInformationPtr si(new ob::SpaceInformation(space));
             si->setStateValidityChecker(boost::bind(&isStateValid,quad_name,_1));
 
@@ -177,13 +181,13 @@ class WrapperPlanner{
             si->setStateValidityCheckingResolution(0.05);
 
             ob::ScopedState<ob::SE2StateSpace> robot(space);
-            robot->setX(robot_pos.first);
-            robot->setY(robot_pos.second);
+            robot->setX(robotX);
+            robot->setY(robotY);
             robot->setYaw(0.0);
 
             ob::ScopedState<ob::SE2StateSpace> goal(space);
-            goal->setX(goal_pos.first);
-            goal->setY(goal_pos.second);
+            goal->setX(goalX);
+            goal->setY(goalY);
             goal->setYaw(0.0);
 
             ob::ProblemDefinitionPtr pdef(new ob::ProblemDefinition(si));
@@ -205,7 +209,8 @@ class WrapperPlanner{
 
                 og::PathGeometric* path = (*p).as<og::PathGeometric> ();
                 std::vector<ob::State*> path_states = path->getStates();
-               
+                if(!paths.empty()) //Implies the first iteration of planner.
+                    paths.clear();
                 for(unsigned int i=0;i<path_states.size();i++){
                         const ob::State* state = path_states[i];
                         const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
@@ -220,7 +225,9 @@ class WrapperPlanner{
                         paths.emplace_back(std::make_pair(x,y));
 
                 }
+            
                 all_paths[quad_name]= paths;
+
             }
             else
             {
@@ -229,11 +236,11 @@ class WrapperPlanner{
             }
       }
 
+
       void publishStep()
       {
             if (!paths.empty())
             {
-                ROS_INFO("Publishing step goal of %s",quad_name.c_str());
                 std::vector< std::pair<float,float> >::iterator step_itr = paths.begin();
                         
                 geometry_msgs::PoseStamped step;
@@ -251,6 +258,9 @@ class WrapperPlanner{
                 step.pose.orientation.w = 1;
 
                 step_cmd.publish(step);
+                //After this command is published, CPU goes a low-running state. We can exploit that time duration to further plan the motion to find more optimal paths.
+                /*if(abs(step_itr->first - goal_pos.first) > 0.2 && abs(step_itr->second - goal_pos.second) > 0.2 )
+                    manualPlanning(step.pose.position.x,step.pose.position.y,goal_pos.first,goal_pos.second);*/
             }
             else
                 ROS_INFO("Either quadrotor arrived or no path found!");
@@ -270,7 +280,7 @@ void loadModels(const gazebo_msgs::ModelStates::ConstPtr& msg)
 		for (unsigned int i = 1; i < model_count; i++){
             size_t found = msg->name[i].find("uav");
             if(found!=std::string::npos){
-                ;
+                uav_list[msg->name[i]] = std::make_pair(msg->pose[i].position.x,msg->pose[i].position.y);
             }
             else
 			    obstacle_list.push_back(std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y));

@@ -39,3 +39,5 @@ target_link_libraries(motion_planner_ompl ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
 add_executable(quad_user_interface src/quad_user_interface.cpp)
 target_link_libraries(quad_user_interface ${catkin_LIBRARIES})
 
+add_executable(collision_checker src/collision_checker.cpp)
+target_link_libraries(collision_checker ${catkin_LIBRARIES})

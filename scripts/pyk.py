@@ -15,7 +15,7 @@ S = pygame.display.set_mode((700, 700))
 
 
 def handle_model_states(msg):
-	global prev_count,end_l_one
+	global prev_count,end_l_one,end_1_two
 	try:
 		n = len(msg.name)
 		if n > prev_count:
@@ -31,7 +31,7 @@ def handle_model_states(msg):
 					continue
 				o_pix_x = int(350 + msg.pose[i].position.x * 35)
 				o_pix_y = int(350 - msg.pose[i].position.y * 35)
-				pygame.draw.circle(pygame.display.get_surface(), (220, 220, 220, 100), (o_pix_x, o_pix_y), 34, 0)
+				pygame.draw.circle(pygame.display.get_surface(), (220, 220, 220, 100), (o_pix_x, o_pix_y), 42, 0)
 				
 				
 			prev_count = n
@@ -42,15 +42,15 @@ def handle_goal_point(msg,name):
 	g_pix_x = int(350 + msg.x * 35)
 	g_pix_y = int(350 - msg.y * 35)
 	fg = 0, 0, 0
-	font = pygame.font.Font(None, 20)
-	text = "%s goal"%(name)
-	ren = font.render(text,0,fg)
+	# font = pygame.font.Font(None, 20)
+	# text = "%s goal"%(name)
+	# ren = font.render(text,0,fg)
 	pygame.draw.circle(pygame.display.get_surface(), (0, 255, 0), (g_pix_x, g_pix_y), 6, 0)
-	S.blit(ren,(g_pix_x,g_pix_y))
+	# S.blit(ren,(g_pix_x - 3,g_pix_y - 3))
 	pygame.display.update()
 
 def handle_sampled_point(msg,name):
-	global end_1
+	global end_1_one,end_1_two
 	p_pix_x = int(350 + msg.x * 35)
 	p_pix_y = int(350 - msg.y * 35)
 	fg = 0, 0, 0
@@ -80,7 +80,7 @@ if __name__ == '__main__':
 	rospy.Subscriber('/uav2/sampled_point', hector_uav_msgs.msg.Vector, handle_sampled_point,"uav2")
 	rospy.Subscriber('/uav1/actual_uav_goal', hector_uav_msgs.msg.Vector, handle_goal_point, "uav1")
 	rospy.Subscriber('/uav2/actual_uav_goal', hector_uav_msgs.msg.Vector, handle_goal_point, "uav2")
-	
+	pygame.display.set_caption('Motion Planning Visualization')
 	pygame.display.flip()
 
 	running = True

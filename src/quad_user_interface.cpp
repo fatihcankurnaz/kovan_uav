@@ -30,8 +30,8 @@ int main(int argc, char** argv)
 	ros::Duration(2.0).sleep();
 
 	hector_uav_msgs::Vector _goal1, _goal2;
-	_goal1.x = 7.0;
-	_goal1.y = 5.0;
+	_goal1.x = 0.0;
+	_goal1.y = 0.0;
 	_goal1.z = 0.5;
 
 	ultimate_goal_pub_uav1.publish(_goal1);
