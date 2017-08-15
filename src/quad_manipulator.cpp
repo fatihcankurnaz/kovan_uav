@@ -19,7 +19,7 @@
 #include <map>
 #include <cmath>
 
-#define EQUAL_CONST 0.05
+#define EQUAL_CONST 0.5
 
 
 
@@ -30,9 +30,7 @@ struct
 } pid_;
 
 unsigned int total_model_count = 0;
-
-// THERE IS AMBIGUITY ABOUT HOW TO PUT THIS INTO A THREAD AND START ITS SERVING.
-bool isEqual(double a, double b) { return ( abs(a - b) > EQUAL_CONST ) ? false : true; }
+bool isEqual(double a, double b) { return ( fabs(a - b) > EQUAL_CONST ) ? false : true; }
 class Wrapper{
 public:
 	class QuadController {
@@ -147,6 +145,9 @@ public:
 						&& isEqual(goalZ, correspondingQuad->quadPose.pose.position.z) )
 					{
 						hector_uav_msgs::Done done_send;
+						/*ROS_INFO("Goal (%f,%f), Robot (%f,%f), Equality(goal,pose) : %.4f",goalX,goalY,
+							correspondingQuad->quadPose.pose.position.x,correspondingQuad->quadPose.pose.position.y,
+							fabs(goalX - correspondingQuad->quadPose.pose.position.x));*/
 
 						done_send.commandDone = true;
 						done_send.position.x = goalX;
@@ -159,12 +160,12 @@ public:
 						//ROS_INFO("Robot step is done.");
 						correspondingQuad->quad_done.publish(done_send);
 						operating = false;
-						
+						return;
 					}
 					// corrects the position of the quadro by giving velocity
 					if(!slowing && operating){
-						vel_msg.linear.x = x * 0.4;
-						vel_msg.linear.y = y * 0.4;
+						vel_msg.linear.x = x * 0.6;
+						vel_msg.linear.y = y * 0.6;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
 						velocity_factor = 0.1;
 						//ROS_INFO("%s : x,y,z = %.2f,%.2f,%.2f",robot_frame.c_str(),vel_msg.linear.x,vel_msg.linear.y,vel_msg.angular.z);
@@ -175,9 +176,9 @@ public:
 						vel_msg.linear.x = x * velocity_factor;
 						vel_msg.linear.y = y * velocity_factor;
 						
-						velocity_factor = velocity_factor - 0.04;
-						if(velocity_factor < - 0.2)
-							velocity_factor = -0.2;
+						velocity_factor = velocity_factor - 0.02;
+						if(velocity_factor < 0)
+							velocity_factor = 0;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
 					}
 					vel_msg.linear.z = z;
@@ -210,7 +211,7 @@ int main(int argc, char **argv)
 	
     Wrapper::QuadController* new_quad_controller1 = new Wrapper::QuadController(root_node,"uav1");
     Wrapper::QuadController* new_quad_controller2 = new Wrapper::QuadController(root_node,"uav2");
-    //Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
+    Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
     //Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");
 
 	ros::Rate rate(1000);

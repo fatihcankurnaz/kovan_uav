@@ -32,7 +32,7 @@ std::vector<std::pair<float, float> > obstacle_list;
 std::map<std::string, std::vector<std::pair<float, float> > > all_paths;
 std::map<std::string, std::pair<float,float> > uav_list;
 size_t total_model_count = 2;
-float waiting_duration = 1.0;
+float waiting_duration = 2.0;
 
 
 bool isStateValid(const std::string& quad_name,const ob::State* state)
@@ -54,17 +54,7 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
         if (result < 0) // The state falls into either an inner region of an obstacle or an inflation area
             return false;
     }
-    /*std::map<std::string,std::pair<float, float> >::iterator uav_itr = uav_list.begin();
-    for(;uav_itr!=uav_list.end();uav_itr++){
-        if(uav_itr->first.compare(quad_name) == 0)
-            continue;
-        else{
-            float result = pow(uav_itr->second.first - sx, 2) + pow(uav_itr->second.second - sy, 2) - 0.5;
-            if(result < 0)
-                return false;
-        }
-    }*/
-    /*if(!all_paths.empty()){
+    if(!all_paths.empty()){
         std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
         float a_square = 0.49; //Elipse's short radius
         for(;map_itr!=all_paths.end();map_itr++){
@@ -83,7 +73,7 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
             }     
         }
 
-    }*/
+    }
     
 
     return true;
@@ -279,13 +269,9 @@ void loadModels(const gazebo_msgs::ModelStates::ConstPtr& msg)
 	{
 		for (unsigned int i = 1; i < model_count; i++){
             size_t found = msg->name[i].find("uav");
-            if(found!=std::string::npos){
-                uav_list[msg->name[i]] = std::make_pair(msg->pose[i].position.x,msg->pose[i].position.y);
-            }
-            else
+            if(found==std::string::npos)
 			    obstacle_list.push_back(std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y));
         }
-
 		total_model_count = model_count;
 	}
 }
@@ -299,7 +285,11 @@ int main(int argc, char** argv)
 
 	ros::Subscriber model_sub = node.subscribe("/gazebo/model_states", 10, &loadModels);
     WrapperPlanner* planner1 = new WrapperPlanner(node,"uav1");
+    ros::Duration(0.5).sleep();
+    WrapperPlanner* planner3 = new WrapperPlanner(node,"uav3");
+    ros::Duration(0.5).sleep();
     WrapperPlanner* planner2 = new WrapperPlanner(node,"uav2");
+    
 	ros::spin();
 	return 0;
 }
