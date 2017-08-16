@@ -8,6 +8,8 @@
 #include <ompl/geometric/SimpleSetup.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 
+#include <ompl/datastructures/NearestNeighborsLinear.h>
+
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <hector_uav_msgs/Done.h>
@@ -25,14 +27,26 @@
 #include <cmath>
 #include <map>
 
+#include <mutex>
+#include <thread>
+#include <condition_variable>
+
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
 std::vector<std::pair<float, float> > obstacle_list;
 std::map<std::string, std::vector<std::pair<float, float> > > all_paths;
 std::map<std::string, std::pair<float,float> > uav_list;
+
+std::vector<std::thread*> thread_refs;
+std::mutex mtx;
+
+std::condition_variable planning_cnd; 
+
 size_t total_model_count = 2;
-float waiting_duration = 2.0;
+float waiting_duration = 0.5;
+int uav_count = 0;
+
 
 
 bool isStateValid(const std::string& quad_name,const ob::State* state)
@@ -56,7 +70,7 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
     }
     if(!all_paths.empty()){
         std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
-        float a_square = 0.49; //Elipse's short radius
+        float a_square = 1.2; //Elipse's short radius
         for(;map_itr!=all_paths.end();map_itr++){
             //ROS_INFO("Path of %s is registered!",(map_itr->first).c_str());
             for(unsigned int i=0;i<(map_itr->second).size() - 1;i++){
@@ -74,9 +88,17 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
         }
 
     }
-    
 
     return true;
+}
+void printPaths(){
+    std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
+    for(;map_itr!=all_paths.end();map_itr++){
+        std::cout<<map_itr->first<<" PATH"<<std::endl;
+        for(unsigned int i=0;i<(map_itr->second).size();i++)
+            std::cout<<"("<<map_itr->second[i].first<<","<<map_itr->second[i].second<<")"<<std::endl;
+        std::cout<<"---------------------"<<std::endl;
+    }
 }
 
 
@@ -112,16 +134,31 @@ class WrapperPlanner{
       {
             goal_pos.first = goal->x;
             goal_pos.second = goal->y;
+            
+            manualPlanning();
 
-            manualPlanning(robot_pos.first,robot_pos.second,goal_pos.first,goal_pos.second);
+            mtx.lock();
             publishStep();
+            planning_cnd.notify_one();
+            mtx.unlock();
       }
       void UAV_StepDone(const std::string& robot_frame,const hector_uav_msgs::Done::ConstPtr& msg)
       {
-            if (!paths.empty())
+            mtx.lock();
+            if (!paths.empty()){
+                /*std::cout<<"BEFORE"<<std::endl;
+                printPaths();*/
+                all_paths[quad_name] = paths;
+                /*std::cout<<"AFTER"<<std::endl;
+                printPaths();*/
                 publishStep();
-            else
-                ROS_INFO("Either quadrotor arrived or no path found!");
+                planning_cnd.notify_one();
+            }
+            else{
+                    all_paths.erase(quad_name);
+                    ROS_INFO("Either quadrotor arrived or no path found!");
+            }
+            mtx.unlock();
       }
       void rloc_callback(const std::string& robot_frame, const gazebo_msgs::ModelStates::ConstPtr& msg){
             size_t model_count = msg->name.size();
@@ -148,6 +185,7 @@ class WrapperPlanner{
             {
                 ROS_INFO("Termination achieved.");
                 waiting_duration += waiting_duration + 0.1;
+                ROS_INFO("waiting_duration for %s is %.2f",quad_name.c_str(),waiting_duration);
                 return true;
 
             }
@@ -155,74 +193,92 @@ class WrapperPlanner{
                 return false;
       }
 
+      ob::ProblemDefinitionPtr planner_setup(ob::StateSpacePtr& space,ob::SpaceInformationPtr& si){
 
-      void manualPlanning(float robotX,float robotY, float goalX,float goalY)
-      {
-            ob::StateSpacePtr space(new ob::SE2StateSpace());
+            //ob::StateSpacePtr space(new ob::SE2StateSpace());
             ob::RealVectorBounds bounds(2);
             bounds.setLow(-10);
             bounds.setHigh(10);
             space->as<ob::SE2StateSpace>()->setBounds(bounds);
-            ROS_INFO("Manual planning for %s : initial_point(%.2f,%.2f)",quad_name.c_str(),robotX,robotY);
-            ob::SpaceInformationPtr si(new ob::SpaceInformation(space));
+            ROS_INFO("Manual planning for %s : initial_point(%.2f,%.2f)",quad_name.c_str(),robot_pos.first,robot_pos.second);
+            
             si->setStateValidityChecker(boost::bind(&isStateValid,quad_name,_1));
 
             si->setMotionValidator(std::make_shared<ob::DiscreteMotionValidator>(si));
             si->setStateValidityCheckingResolution(0.05);
 
             ob::ScopedState<ob::SE2StateSpace> robot(space);
-            robot->setX(robotX);
-            robot->setY(robotY);
+            robot->setX(robot_pos.first);
+            robot->setY(robot_pos.second);
             robot->setYaw(0.0);
 
             ob::ScopedState<ob::SE2StateSpace> goal(space);
-            goal->setX(goalX);
-            goal->setY(goalY);
+            goal->setX(goal_pos.first);
+            goal->setY(goal_pos.second);
             goal->setYaw(0.0);
 
             ob::ProblemDefinitionPtr pdef(new ob::ProblemDefinition(si));
             pdef->setStartAndGoalStates(robot, goal);
+            return pdef;
+      }
 
+      void manualPlanning()
+      {
+            std::unique_lock<std::mutex> lock(mtx); //It gets automatically unlocked when goes out of scope.
+            ob::StateSpacePtr space(new ob::SE2StateSpace());
+            ob::SpaceInformationPtr si(new ob::SpaceInformation(space));
+            
+            ob::ProblemDefinitionPtr pdef = planner_setup(space,si);
             auto planner(std::make_shared<og::RRTstar>(si));
             planner->setProblemDefinition(pdef);
-            planner->setup();
+            planner->setup(); 
 
             
             std::function<bool()> f = std::bind(&WrapperPlanner::terminalCondition,this);
             ob::PlannerTerminationCondition ptc(f);
-            ob::PlannerStatus solved = planner->solve(ptc);
+            ob::PlannerStatus solved;// = planner->solve(ptc);
 
-            if (solved)
+            do
             {
+                ROS_INFO("Trying to solve for %s",quad_name.c_str());
+                solved = planner->solve(ptc);
+                if(!solved){
+                    //mtx.unlock();
+                    planning_cnd.wait(lock);
+                    planner->clear();
+
+                    ob::ProblemDefinitionPtr pdef = planner_setup(space,si);
+                    auto planner(std::make_shared<og::RRTstar>(si));
+                    planner->setProblemDefinition(pdef);
+                    planner->setup();                    
+                    
+                    std::function<bool()> f = std::bind(&WrapperPlanner::terminalCondition,this);
+                    ob::PlannerTerminationCondition ptc(f);
+                }
+            }while(!solved);
+            if(solved){   
                 ROS_INFO("Found a solution for %s!",quad_name.c_str());
                 ob::PathPtr p = pdef->getSolutionPath();
 
                 og::PathGeometric* path = (*p).as<og::PathGeometric> ();
                 std::vector<ob::State*> path_states = path->getStates();
-                if(!paths.empty()) //Implies the first iteration of planner.
-                    paths.clear();
+
                 for(unsigned int i=0;i<path_states.size();i++){
-                        const ob::State* state = path_states[i];
-                        const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
-                        float x = se2state->getX();
-                        float y = se2state->getY();
-                        hector_uav_msgs::Vector p;
-                        p.x = x;
-                        p.y = y;
-                        if(i==0)
-                            p.z = 99;
-                        samp_pub.publish(p);
-                        paths.emplace_back(std::make_pair(x,y));
+                    const ob::State* state = path_states[i];
+                    const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
+                    float x = se2state->getX();
+                    float y = se2state->getY();
+                    hector_uav_msgs::Vector p;
+                    p.x = x;
+                    p.y = y;
+                    if(i==0)
+                        p.z = 99;
+                    samp_pub.publish(p);
+                    paths.emplace_back(std::make_pair(x,y));
 
                 }
             
                 all_paths[quad_name]= paths;
-
-            }
-            else
-            {
-                ROS_INFO("No solution is found for %s!",quad_name.c_str());
-                paths = std::vector< std::pair<float,float> >();
             }
       }
 
@@ -248,9 +304,7 @@ class WrapperPlanner{
                 step.pose.orientation.w = 1;
 
                 step_cmd.publish(step);
-                //After this command is published, CPU goes a low-running state. We can exploit that time duration to further plan the motion to find more optimal paths.
-                /*if(abs(step_itr->first - goal_pos.first) > 0.2 && abs(step_itr->second - goal_pos.second) > 0.2 )
-                    manualPlanning(step.pose.position.x,step.pose.position.y,goal_pos.first,goal_pos.second);*/
+               
             }
             else
                 ROS_INFO("Either quadrotor arrived or no path found!");
@@ -260,36 +314,44 @@ class WrapperPlanner{
 };
 
 
+void initiate_UAV(ros::NodeHandle& nh, const std::string& uav_name){
+    WrapperPlanner* planner = new WrapperPlanner(nh,uav_name);
+    //ros::spin();
+}
 
-
-void loadModels(const gazebo_msgs::ModelStates::ConstPtr& msg)
+void loadModels(ros::NodeHandle& nh, const gazebo_msgs::ModelStates::ConstPtr& msg)
 {
-	size_t model_count = msg->name.size();
-	if (model_count > total_model_count)
-	{
-		for (unsigned int i = 1; i < model_count; i++){
+    size_t model_count = msg->name.size();
+    if (model_count > total_model_count)
+    {
+        for (unsigned int i = 1; i < model_count; i++){
             size_t found = msg->name[i].find("uav");
-            if(found==std::string::npos)
-			    obstacle_list.push_back(std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y));
+            if(found!=std::string::npos){
+                uav_count++;
+                std::thread *uav_thread = new std::thread(&initiate_UAV, std::ref(nh),msg->name[i]);
+                uav_thread->detach();
+                mtx.lock();
+                thread_refs.push_back(uav_thread);
+                mtx.unlock();
+            }
+            else
+                obstacle_list.push_back(std::make_pair(msg->pose[i].position.x, msg->pose[i].position.y));
         }
-		total_model_count = model_count;
-	}
+        total_model_count = model_count;
+    }
 }
 
 
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "motion_planner_ompl");
-	ros::NodeHandle node;
+    ros::init(argc, argv, "motion_planner_ompl");
+    ros::NodeHandle node;
 
-	ros::Subscriber model_sub = node.subscribe("/gazebo/model_states", 10, &loadModels);
-    WrapperPlanner* planner1 = new WrapperPlanner(node,"uav1");
-    ros::Duration(0.5).sleep();
-    WrapperPlanner* planner3 = new WrapperPlanner(node,"uav3");
-    ros::Duration(0.5).sleep();
-    WrapperPlanner* planner2 = new WrapperPlanner(node,"uav2");
+    ros::Subscriber model_sub = node.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states", 10,
+                                boost::bind(&loadModels,std::ref(node),_1));
     
-	ros::spin();
-	return 0;
+    ros::MultiThreadedSpinner spinner(4);
+    spinner.spin();
+    return 0;
 }

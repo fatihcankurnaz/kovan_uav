@@ -26,7 +26,7 @@ void check_collision(){
     for(int i=1;i<UAV_COUNT;i++){
         for(int j=0;j<i;j++){ // j represents the higher order UAV
             if(uavDistanceMatrix(i,j) < 1.5){ //Check whether they have the possibility of "near miss"
-                ROS_INFO("UAV%d and UAV%d has a risk of collision with distance %f",j,i,uavDistanceMatrix(i,j));
+                //ROS_INFO("UAV%d and UAV%d has a risk of collision with distance %f",j,i,uavDistanceMatrix(i,j));
                 uavs[i].data = true;
             }
         }
