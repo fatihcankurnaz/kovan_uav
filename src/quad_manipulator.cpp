@@ -19,7 +19,7 @@
 #include <map>
 #include <cmath>
 
-#define EQUAL_CONST 0.5
+#define EQUAL_CONST 0.25
 
 
 
@@ -160,12 +160,11 @@ public:
 						//ROS_INFO("Robot step is done.");
 						correspondingQuad->quad_done.publish(done_send);
 						operating = false;
-						return;
 					}
 					// corrects the position of the quadro by giving velocity
 					if(!slowing && operating){
-						vel_msg.linear.x = x * 0.6;
-						vel_msg.linear.y = y * 0.6;
+						vel_msg.linear.x = x * 0.5;
+						vel_msg.linear.y = y * 0.5;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
 						velocity_factor = 0.1;
 						//ROS_INFO("%s : x,y,z = %.2f,%.2f,%.2f",robot_frame.c_str(),vel_msg.linear.x,vel_msg.linear.y,vel_msg.angular.z);
@@ -176,7 +175,7 @@ public:
 						vel_msg.linear.x = x * velocity_factor;
 						vel_msg.linear.y = y * velocity_factor;
 						
-						velocity_factor = velocity_factor - 0.02;
+						velocity_factor = velocity_factor - 0.03;
 						if(velocity_factor < 0)
 							velocity_factor = 0;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);

@@ -4,6 +4,8 @@
 #include <geometry_msgs/Twist.h>
 #include "Eigen/Dense"
 
+#include <std_msgs/Float64.h>
+
 #define UAV_COUNT 3
 size_t total_model_count = 2;
 ros::Publisher uavs_pub[UAV_COUNT];// uav1_pub,uav2_pub,uav3_pub;
@@ -13,10 +15,13 @@ using Eigen::MatrixXf;
 MatrixXf uavPoseMatrix(3,3);
 MatrixXf uavDistanceMatrix(3,3);
 
+ros::Subscriber uavs_sub[UAV_COUNT];
+std::map<std::string, float> remaining;
 
-// UAVs must have a priority. We simply set it as descending order. 
-// UAV1 > UAV2 > UAV3> ...
-
+void remainingStepCallback(const std::string& _qname, const std_msgs::Float64::ConstPtr& msg)
+{ 
+    remaining[_qname] = msg->data; 
+}
 void check_collision(){
 
 	std_msgs::Bool uavs[UAV_COUNT];
@@ -24,10 +29,20 @@ void check_collision(){
         uavs[i].data = false;
 	
     for(int i=1;i<UAV_COUNT;i++){
-        for(int j=0;j<i;j++){ // j represents the higher order UAV
+        for(int j=0;j<i;j++){
+            std::string uav_i = "uav", uav_j = "uav";
+            uav_i.push_back(i + 48);
+            uav_j.push_back(j + 48); 
             if(uavDistanceMatrix(i,j) < 1.5){ //Check whether they have the possibility of "near miss"
-                //ROS_INFO("UAV%d and UAV%d has a risk of collision with distance %f",j,i,uavDistanceMatrix(i,j));
-                uavs[i].data = true;
+                //ROS_INFO("UAV%d and UAV%d has a risk of collision with distance %f",j+1,i+1,uavDistanceMatrix(i,j));
+                if (remaining[uav_i] < remaining[uav_j]){
+                   //ROS_INFO("Remaning path of UAV%d = %.2f < %.2f(UAV%d)",i+1,remaining[uav_i],remaining[uav_j],j+1);
+                   uavs[i].data = true;
+                }
+                else{
+                   //ROS_INFO("Remaning path of UAV%d = %.2f < %.2f(UAV%d)",j+1,remaining[uav_j],remaining[uav_i],i+1);
+                   uavs[j].data = true;
+                }
             }
         }
     }
@@ -61,8 +76,6 @@ void loadUAVs(const gazebo_msgs::ModelStates::ConstPtr& msg)
             }
         }
     }
-
-    //std::cout<<uavPoseMatrix<<std::endl;
     
     //uavDistanceMatrix calculates the distances between UAVs in pairs.
     for(int i=1;i<UAV_COUNT;i++)
@@ -86,6 +99,12 @@ int main(int argc, char** argv)
     uavs_pub[0] = node.advertise<std_msgs::Bool>("/uav1/check_collision",1);
     uavs_pub[1] = node.advertise<std_msgs::Bool>("/uav2/check_collision",1);
     uavs_pub[2] = node.advertise<std_msgs::Bool>("/uav3/check_collision",1);
+
+
+
+    uavs_sub[0] = node.subscribe<std_msgs::Float64>("/uav1/remaining_step", 1, boost::bind(&remainingStepCallback, "uav1", _1));
+    uavs_sub[1] = node.subscribe<std_msgs::Float64>("/uav2/remaining_step", 1, boost::bind(&remainingStepCallback, "uav2", _1));
+    uavs_sub[2] = node.subscribe<std_msgs::Float64>("/uav3/remaining_step", 1, boost::bind(&remainingStepCallback, "uav3", _1));
 	ros::spin();
 	return 0;
 }
