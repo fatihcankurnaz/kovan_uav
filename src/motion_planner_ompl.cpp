@@ -15,14 +15,18 @@
 #include <hector_uav_msgs/Vector.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Bool.h>
+#include <std_msgs/Int32.h>
 
 #include <gazebo_msgs/ModelStates.h>
 
 #include <fstream>
 #include <iostream>
+#include <ctime>
+#include <cstdlib>
 #include <boost/bind.hpp>
 
-#include <ctime>
+
 #include <vector>
 #include <utility>
 #include <cmath>
@@ -50,17 +54,7 @@ size_t total_model_count = 2;
 float waiting_duration = 0.5;
 int uav_count = 0;
 
-
-
-bool isStateValid(const std::string& quad_name,const ob::State* state)
-{
-    const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
-    //const ob::RealVectorStateSpace::StateType *pos = se2state->as<ob::RealVectorStateSpace::StateType>(0);
-    //const ob::SO3StateSpace::StateType *rot = se3state->as<ob::SO3StateSpace::StateType>(1);
-
-    // Check state if its in any of the occupied obstacle areas or the ones inflated with robot's radius
-    float sx = se2state->getX();
-    float sy = se2state->getY();
+bool notObstacle(float sx,float sy){
     std::vector<std::pair<float, float> >::iterator obs = obstacle_list.begin();
     for(; obs != obstacle_list.end(); obs++)
     {
@@ -71,6 +65,15 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
         if (result < 0) // The state falls into either an inner region of an obstacle or an inflation area
             return false;
     }
+
+    std::map<std::string, std::pair<float,float> >::iterator it = uav_list.begin();
+    for(;it!=uav_list.end();it++){
+        
+        float result = pow(it->second.first - sx,2) + pow(it->second.second - sy,2) - 1.0;
+        if(result<0)
+            return false;
+    }
+    
     /*if(!all_paths.empty()){
         std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
         float a_square = 0.49; //Elipse's short radius
@@ -89,10 +92,20 @@ bool isStateValid(const std::string& quad_name,const ob::State* state)
                     return false;
             }     
         }
-
     }*/
-
     return true;
+}
+
+bool isStateValid(const std::string& quad_name,const ob::State* state)
+{
+    const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
+    //const ob::RealVectorStateSpace::StateType *pos = se2state->as<ob::RealVectorStateSpace::StateType>(0);
+    //const ob::SO3StateSpace::StateType *rot = se3state->as<ob::SO3StateSpace::StateType>(1);
+
+    // Check state if its in any of the occupied obstacle areas or the ones inflated with robot's radius
+    float sx = se2state->getX();
+    float sy = se2state->getY();
+    return notObstacle(sx,sy);
 }
 void printPaths(){
     std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
@@ -108,27 +121,33 @@ void printPaths(){
 class WrapperPlanner{
     public:
       ros::NodeHandle node;
-      ros::Publisher samp_pub, step_cmd,rem_pub;
-      ros::Subscriber done_sub, mainGoal_sub, rloc_sub;
+      ros::Publisher samp_pub, step_cmd,rem_pub,arrived_pub,waypoint_pub;
+      ros::Subscriber done_sub, mainGoal_sub, rloc_sub, update_goal_sub;
       std::vector< std::pair<float,float> > paths;
       size_t p_total_model_count;
       
-      std::pair<float, float> robot_pos, goal_pos;
+      std::pair<float, float> robot_pos, goal_pos,step_pos;
 
       std::string quad_name;
       clock_t timeBeforePlanning;
-      bool erase_flag;
-      float total_path_length,step_path_length;
+      bool erase_flag,step_acquired;
+      float total_path_length,step_path_distance;
 
       WrapperPlanner(ros::NodeHandle _nh, std::string uav_name){
             node = _nh;
             quad_name = uav_name;
-            done_sub = node.subscribe<hector_uav_msgs::Done>("/"+quad_name+"/Done", 10, boost::bind(&WrapperPlanner::UAV_StepDone,this,quad_name,_1));
-            mainGoal_sub = node.subscribe<hector_uav_msgs::Vector>("/"+quad_name+"/actual_uav_goal", 1, boost::bind(&WrapperPlanner::UAV_MainGoal,this,quad_name,_1));
+            done_sub = node.subscribe<hector_uav_msgs::Done>("/"+quad_name+"/Done", 10, boost::bind(&WrapperPlanner::StepDone,this,quad_name,_1));
+            mainGoal_sub = node.subscribe<hector_uav_msgs::Vector>("/"+quad_name+"/actual_uav_goal", 1, boost::bind(&WrapperPlanner::MainGoal,this,quad_name,_1));
+            /* ---------------- It might be useful when further plannings are considered as meaningfully costly. ---------------*/
+            update_goal_sub = node.subscribe<std_msgs::Bool>("/"+quad_name+"/update_goal",1, boost::bind(&WrapperPlanner::UpdateGoal,this,quad_name,_1));
+            /* -----------------------------------------------------------------------------------------------------------------*/
             
+
             step_cmd = node.advertise<geometry_msgs::PoseStamped>("/"+quad_name+"/move_base_simple/goal", 1);
             samp_pub = node.advertise<hector_uav_msgs::Vector>("/"+quad_name+"/sampled_point", 1000);
             rem_pub = node.advertise<std_msgs::Float64>("/"+quad_name+"/remaining_step",1);
+            arrived_pub = node.advertise<std_msgs::String>("/"+quad_name+"/arrival",1);
+            waypoint_pub = node.advertise<std_msgs::Int32>("/"+quad_name+"/path_number",1);
 
             timeBeforePlanning = clock();
             all_paths[quad_name] = std::vector<std::pair<float, float> >(2);
@@ -137,10 +156,11 @@ class WrapperPlanner{
             p_total_model_count = 2;
             erase_flag = false;
             total_path_length = 0;
-            step_path_length = 0;
+            step_path_distance = 0;
+            step_acquired = false;
       }
       ~WrapperPlanner() {}
-      void UAV_MainGoal(const std::string& robot_frame, const hector_uav_msgs::Vector::ConstPtr& goal)
+      void MainGoal(const std::string& robot_frame, const hector_uav_msgs::Vector::ConstPtr& goal)
       {
             goal_pos.first = goal->x;
             goal_pos.second = goal->y;
@@ -149,31 +169,71 @@ class WrapperPlanner{
             manualPlanning();
             mtx.unlock();
             
-            //mtx.lock();
-            ROS_INFO("%s : Waiting semaphore",robot_frame.c_str());
+           
             sem.wait();
-            ROS_INFO("%s : Passed semaphore",robot_frame.c_str());
             publishStep();
             sem.notify();
             /*planning_cnd.notify_one();
             mtx.unlock();*/
       }
-      void UAV_StepDone(const std::string& robot_frame,const hector_uav_msgs::Done::ConstPtr& msg)
+      void StepDone(const std::string& robot_frame,const hector_uav_msgs::Done::ConstPtr& msg)
       {
             mtx.lock();
             if (!paths.empty()){
                 all_paths[quad_name][1] = paths[0];
-                total_path_length-=step_path_length;
+                total_path_length -= step_path_distance;
+                
+                ROS_INFO("%s total_path_length = %.2f",robot_frame.c_str(),total_path_length);
                 publishStep();
                 //planning_cnd.notify_one();
             }
             else{
                     all_paths.erase(quad_name);
                     erase_flag = true;
-                    ROS_INFO("Either %s arrived or no path found!",robot_frame.c_str());
+                    ROS_INFO("%s arrived!",robot_frame.c_str());
+                    std_msgs::String msg;
+                    msg.data = "SUCCESS";
+                    arrived_pub.publish(msg);
+
+                    //Update current position of robot as an obstacle.
+                    uav_list[robot_frame] = robot_pos;
+                    ROS_INFO("%s position (%.2f,%.2f) is added as an obstacle",robot_frame.c_str(),robot_pos.first,robot_pos.second);
             }
             mtx.unlock();
       }
+
+      void UpdateGoal(const std::string& robot_frame,const std_msgs::Bool::ConstPtr& msg){
+            //A stimuli that dictates to change our goal has arrived. Check that if goal is in a safe area.
+            //ROS_INFO("Check %s goal if it collides with any drone or obstacle",robot_frame.c_str());
+            
+            mtx.lock();
+            if(notObstacle(goal_pos.first,goal_pos.second) == false){
+                std::srand(std::time(0));
+                while(1){
+                        
+                        float x_addee,y_addee;
+                        float temp_goalX,temp_goalY;
+                        x_addee = (float)((std::rand()%200) - 100) / 100;
+                        y_addee = (float)((std::rand()%200) - 100) / 100;
+                        temp_goalX = goal_pos.first + x_addee;
+                        temp_goalY = goal_pos.second + y_addee;
+                        ROS_INFO("Checking %.2f,%.2f as possible goal",temp_goalX,temp_goalY);
+                        if(notObstacle(temp_goalX,temp_goalY))
+                        {
+                            goal_pos.first = temp_goalX;
+                            goal_pos.second = temp_goalY;
+                            ROS_INFO("New goal_point is (%.2f,%.2f)",goal_pos.first,goal_pos.second);
+                            manualPlanning(); //Plan again.
+                            break;
+                        }
+                }
+            }
+            else //No need to update goal. Plan again, considering finished UAVs.
+                manualPlanning();
+            mtx.unlock();
+      }
+
+
       void rloc_callback(const std::string& robot_frame, const gazebo_msgs::ModelStates::ConstPtr& msg){
             
             size_t model_count = msg->name.size();
@@ -182,6 +242,11 @@ class WrapperPlanner{
                 if(found!=std::string::npos){
                     robot_pos.first = msg->pose[i].position.x;
                     robot_pos.second = msg->pose[i].position.y;
+                    if(!step_acquired)
+                        step_pos = robot_pos;
+                    float current_distance_to_step = euclidean_distance(step_pos.first,robot_pos.first,step_pos.second,robot_pos.second); 
+                    total_path_length -= step_path_distance - current_distance_to_step;
+                    step_path_distance = current_distance_to_step;
                     break;
                 }
             }
@@ -192,67 +257,8 @@ class WrapperPlanner{
       }
 
       float euclidean_distance(float x1,float y1,float x2,float y2){
+
         return sqrt(pow(x1 - y1, 2) + pow(x2 - y2, 2));
-      }
-
-      bool is_intersection(const std::vector<std::pair<float, float> >& uav_path){
-            //Checks the robot_pos and step_goal_pos,if they are intersect with the uav_path.
-            float a_square = 1.2; //Elipse's short radius
-            float distance_between_step_goals = pow(uav_path[1].first - uav_path[0].first, 2) + pow(uav_path[1].second - uav_path[0].second, 2);
-            float b_square =pow(sqrt(distance_between_step_goals) + 0.5, 2); //Ellipse's long radius
-            float ellipse_center_x =  (uav_path[1].first + uav_path[0].first) / 2;
-            float ellipse_center_y =  (uav_path[1].second + uav_path[0].second) / 2;
-            float robot_result = (b_square * pow(robot_pos.first - ellipse_center_x,2)) + (a_square * pow(robot_pos.second - ellipse_center_y,2)) - (a_square * b_square);
-            float step_result = (b_square * pow(all_paths[quad_name][1].first - ellipse_center_x,2)) + (a_square * pow(all_paths[quad_name][1].second - ellipse_center_y,2)) - (a_square * b_square);
-            ROS_INFO("Robots distance to ellipse is %.2f",robot_result);
-            if(robot_result < 0 || step_result < 0)                    
-                return true;
-
-            auto onSegment = [](std::pair<float,float> p, std::pair<float,float> q, std::pair<float,float> r){
-                if (q.first <= std::max(p.first, r.first) && q.first >= std::min(p.first, r.first) &&
-                    q.second <= std::max(p.second, r.second) && q.second >= std::min(p.second, r.second))
-                return true;
-
-                return false;
-            };
-            
-            auto orientation = [](std::pair<float,float> p, std::pair<float,float> q, std::pair<float,float> r) {
-                float val = (q.second - p.second) * (r.first - q.first) -
-                        (q.first - p.first) * (r.second - q.second);
-
-                if (val == 0) return 0; // colinear
-
-                return (val > 0)? 1: 2; // clock or counterclock wise 
-            };
-            // Find the four orientations needed for general and
-            // special cases
-            std::pair<float,float> p1 = robot_pos;
-            std::pair<float,float> p2 = all_paths[quad_name][1];
-            std::pair<float,float> q1 = uav_path[0];
-            std::pair<float,float> q2 = uav_path[1];
-            int o1 = orientation(p1, q1, p2);
-            int o2 = orientation(p1, q1, q2);
-            int o3 = orientation(p2, q2, p1);
-            int o4 = orientation(p2, q2, q1);
-                    // General case
-            if (o1 != o2 && o3 != o4)
-                return true;
-
-            // Special Cases
-            // p1, q1 and p2 are colinear and p2 lies on segment p1q1
-            if (o1 == 0 && onSegment(p1, p2, q1)) return true;
-
-            // p1, q1 and p2 are colinear and q2 lies on segment p1q1
-            if (o2 == 0 && onSegment(p1, q2, q1)) return true;
-
-            // p2, q2 and p1 are colinear and p1 lies on segment p2q2
-            if (o3 == 0 && onSegment(p2, p1, q2)) return true;
-
-            // p2, q2 and q1 are colinear and q1 lies on segment p2q2
-            if (o4 == 0 && onSegment(p2, q1, q2)) return true;
-
-            return false; // Doesn't fall in any of the above cases
-            
       }
       bool terminalCondition()
       {
@@ -273,12 +279,10 @@ class WrapperPlanner{
 
       ob::ProblemDefinitionPtr planner_setup(ob::StateSpacePtr& space,ob::SpaceInformationPtr& si){
 
-            //ob::StateSpacePtr space(new ob::SE2StateSpace());
             ob::RealVectorBounds bounds(2);
             bounds.setLow(-10);
             bounds.setHigh(10);
             space->as<ob::SE2StateSpace>()->setBounds(bounds);
-            ROS_INFO("Manual planning for %s : initial_point(%.2f,%.2f)",quad_name.c_str(),robot_pos.first,robot_pos.second);
             
             si->setStateValidityChecker(boost::bind(&isStateValid,quad_name,_1));
 
@@ -294,7 +298,8 @@ class WrapperPlanner{
             goal->setX(goal_pos.first);
             goal->setY(goal_pos.second);
             goal->setYaw(0.0);
-
+            ROS_INFO("Manual planning for %s : start point(%.2f,%.2f) | goal point(%.2f,%.2f)",quad_name.c_str(),robot_pos.first,robot_pos.second,goal_pos.first,goal_pos.second);
+            
             ob::ProblemDefinitionPtr pdef(new ob::ProblemDefinition(si));
             pdef->setStartAndGoalStates(robot, goal);
             return pdef;
@@ -336,44 +341,60 @@ class WrapperPlanner{
             }while(!solved);
             if(solved){   
                 ROS_INFO("Found a solution for %s!",quad_name.c_str());
+                step_acquired = true;
                 ob::PathPtr p = pdef->getSolutionPath();
 
+                if(!paths.empty()){//If this is not the first planning of UAV, then clear old path.
+                    uav_count--; // This line is added, because this UAV's motion was previously planned.
+                    paths.clear();
+                }
                 og::PathGeometric* path = (*p).as<og::PathGeometric> ();
+                
+                //path->print(std::cout);
+                
                 std::vector<ob::State*> path_states = path->getStates();
                 float previousX = robot_pos.first;
                 float previousY = robot_pos.second;
-                for(unsigned int i=0;i<path_states.size();i++){
+                for(unsigned int i=0,j=0;i<path_states.size();i++,j++){
                     const ob::State* state = path_states[i];
                     const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
                     float x = se2state->getX();
                     float y = se2state->getY();
+
+                    /*Here we need to eliminate the waypoints that are distant than robot's current position */
+                    float robot_to_goal = euclidean_distance(robot_pos.first,goal_pos.first,robot_pos.second,goal_pos.second);
+                    float waypoint_to_goal = euclidean_distance(x,goal_pos.first,y,goal_pos.second);
+                    if(waypoint_to_goal - robot_to_goal > 0.2){
+                        j--; // Added only for visual purposes.
+                        continue;
+                    }
+                    /* ------------------------------------------------------------------------------------- */
+
                     hector_uav_msgs::Vector p;
                     p.x = x;
                     p.y = y;
-                    if(i==0)
+                    if(j==0)
                         p.z = 99;
                     samp_pub.publish(p);
                     paths.emplace_back(std::make_pair(x,y));
+
                     total_path_length += euclidean_distance(x,previousX,y,previousY);
+
                     previousX = x;
                     previousY = y;
                 }
+                std_msgs::Int32 msg;
+                msg.data = path_states.size();
+                waypoint_pub.publish(msg);
                 all_paths[quad_name][1] = paths[0];
+
                 //all_paths[quad_name]= paths;
             }
             uav_count++;
-            ROS_INFO("uav_count = %d",uav_count);
             if(uav_count == 3)
                 sem.notify();
       }
 
-      bool is_inferior(const std::vector<std::pair<float, float> >& other_uav_path){
-            float own_distance = pow(robot_pos.first - all_paths[quad_name][1].first, 2) + pow(robot_pos.second - all_paths[quad_name][1].second, 2);
-            float other_distance = pow(other_uav_path[0].first - other_uav_path[1].first, 2) + pow(other_uav_path[0].second - other_uav_path[1].second, 2);
-            if(own_distance > other_distance)
-                return true;
-            return false;
-      }
       void publishStep()
       {
             if (!paths.empty())
@@ -393,32 +414,7 @@ class WrapperPlanner{
                 step.pose.orientation.y = 0;
                 step.pose.orientation.z = 0;
                 step.pose.orientation.w = 1;
-
-                /*bool inferior_flag = false;
-               
-                std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
-                for(;map_itr!=all_paths.end();map_itr++){
-                    if(map_itr->first.compare(quad_name) == 0 || map_itr->second.size() == 0)
-                        continue;
-                    else{
-                        if(is_intersection(map_itr->second)){
-                            if(is_inferior(map_itr->second)){ //Which means it is inferior to the comparing uav.
-                                ROS_INFO("Paths of %s and %s intersects and first one has lower priority.",quad_name.c_str(),map_itr->first.c_str());
-                                inferior_flag = true;
-                                break;  
-                            }
-                            else{
-                                ROS_INFO("Paths of %s and %s intersects but first one has higher priority.",quad_name.c_str(),map_itr->first.c_str());                          
-                            }
-                        }
-                    }
-                }//end for
-                
-                if(inferior_flag){
-                    step.pose.position.x = robot_pos.first;
-                    step.pose.position.y = robot_pos.second;
-                }
-                else{*/
+                step_pos = std::make_pair(step_itr->first,step_itr->second);
                 paths.erase(step_itr);
                 if(!paths.empty())
                     all_paths[quad_name][1] = paths[0]; //Next element is loaded to all_paths.
@@ -431,11 +427,10 @@ class WrapperPlanner{
 
                 step_cmd.publish(step);
 
-                //Calculate step_path_length for dynamically decreasing total_path at each step_done.
-                step_path_length = euclidean_distance(step.pose.position.x,robot_pos.first,step.pose.position.y,robot_pos.second);
-            } 
+                step_path_distance = euclidean_distance(step_pos.first,robot_pos.first,step_pos.second,robot_pos.second);
+             } 
             else
-                ROS_INFO("Either quadrotor arrived or no path found!");
+                ROS_INFO("Either %s arrived or no path found!",quad_name.c_str());
       }
 
 
@@ -444,7 +439,6 @@ class WrapperPlanner{
 
 void initiate_UAV(ros::NodeHandle& nh, const std::string& uav_name){
     WrapperPlanner* planner = new WrapperPlanner(nh,uav_name);
-    //ros::spin();
 }
 
 void loadModels(ros::NodeHandle& nh, const gazebo_msgs::ModelStates::ConstPtr& msg)

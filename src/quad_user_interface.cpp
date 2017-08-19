@@ -32,7 +32,7 @@ int main(int argc, char** argv)
 
 	hector_uav_msgs::Vector _goal1, _goal2,_goal3;
 	_goal1.x = 7.0;
-	_goal1.y = 5.0;
+	_goal1.y = 7.0;
 	_goal1.z = 0.5;
 
 	ultimate_goal_pub_uav1.publish(_goal1);
@@ -41,7 +41,7 @@ int main(int argc, char** argv)
 	_goal2.z = 0.5;
 	ultimate_goal_pub_uav2.publish(_goal2);
 	_goal3.x = 7.0;
-	_goal3.y = 5.0;
+	_goal3.y = 3.0;
 	_goal3.z = 0.5;
 	ultimate_goal_pub_uav3.publish(_goal3);
 	ros::spin();

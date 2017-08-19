@@ -5,6 +5,7 @@
 #include <tf/transform_listener.h>
 
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int32.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
 
@@ -19,7 +20,7 @@
 #include <map>
 #include <cmath>
 
-#define EQUAL_CONST 0.25
+#define EQUAL_CONST 0.4
 
 
 
@@ -37,12 +38,12 @@ public:
 		public:
 			ros::NodeHandle node;
 			ros::ServiceClient engage_motors;
-			ros::Subscriber goal_sub, quad_sub,collision_sub;
+			ros::Subscriber goal_sub, quad_sub,collision_sub,waypoint_number_sub;
 			ros::Publisher quad_vel, quad_done;
 			geometry_msgs::PoseStamped goalPose, quadPose;
 
 			std::string quad_name;
-			float velocity_factor;
+			float velocity_factor,slowing_factor;
 			double yaw_command;
 			bool desired_updated;
 			bool desired_achived;
@@ -60,7 +61,8 @@ public:
 				operating = false;
 				slowing = false;
 				yaw_command = 0;
-				velocity_factor = 0.1;
+				velocity_factor = 0.15; //It will be multiplied by number of waypoints in the path.
+				slowing_factor = 0.15;
 				engage_motors = node.serviceClient<hector_uav_msgs::EnableMotors>("/"+quad_name+"/enable_motors");
 				hector_uav_msgs::EnableMotors srv;
 				srv.request.enable = true;
@@ -76,12 +78,19 @@ public:
 				collision_sub = node.subscribe<std_msgs::Bool>("/"+quad_name+"/check_collision",1,
 					boost::bind(&QuadController::collisionCallback, this,quad_name, _1));
 
+				waypoint_number_sub = node.subscribe<std_msgs::Int32>("/"+quad_name+"/path_number",1,
+					boost::bind(&QuadController::UpdateVelocity,this,quad_name,_1));
 				quad_vel = node.advertise<geometry_msgs::Twist>("/"+quad_name+"/cmd_vel", 10);
 				quad_done = node.advertise<hector_uav_msgs::Done>("/"+quad_name+"/Done", 10);
 			}
 			void collisionCallback(const std::string& robot_frame,const std_msgs::Bool::ConstPtr& msg){
 				slowing = msg->data; 
 			}
+			void UpdateVelocity(const std::string& robot_frame,const std_msgs::Int32::ConstPtr& msg){
+		        velocity_factor = 0.15 * msg->data;
+		        if(velocity_factor > 1.0)
+		        	velocity_factor = 1.0;
+		    }
 			void goalPoseCallback(const std::string& robot_frame,const geometry_msgs::PoseStamped::ConstPtr& msg) 
 			{
 				//ROS_INFO("Robot step is being taken.");
@@ -163,21 +172,20 @@ public:
 					}
 					// corrects the position of the quadro by giving velocity
 					if(!slowing && operating){
-						vel_msg.linear.x = x * 0.5;
-						vel_msg.linear.y = y * 0.5;
+						vel_msg.linear.x = x * velocity_factor;
+						vel_msg.linear.y = y * velocity_factor;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
-						velocity_factor = 0.1;
 						//ROS_INFO("%s : x,y,z = %.2f,%.2f,%.2f",robot_frame.c_str(),vel_msg.linear.x,vel_msg.linear.y,vel_msg.angular.z);
 						
 					}
 					else if (slowing && operating){
 						//ROS_INFO("Slowing down %s",robot_frame.c_str());
-						vel_msg.linear.x = x * velocity_factor;
-						vel_msg.linear.y = y * velocity_factor;
+						vel_msg.linear.x = x * slowing_factor;
+						vel_msg.linear.y = y * slowing_factor;
 						
-						velocity_factor = velocity_factor - 0.03;
-						if(velocity_factor < 0)
-							velocity_factor = 0;
+						slowing_factor = slowing_factor - 0.05;
+						if(slowing_factor < 0)
+							slowing_factor = 0;
 						vel_msg.angular.z = 2 * pid_.yaw.computeCommand(yaw_error, period);
 					}
 					vel_msg.linear.z = z;

@@ -5,24 +5,71 @@
 #include "Eigen/Dense"
 
 #include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
+#include <std_msgs/Bool.h>
 
+#include <limits.h>
 #define UAV_COUNT 3
 size_t total_model_count = 2;
-ros::Publisher uavs_pub[UAV_COUNT];// uav1_pub,uav2_pub,uav3_pub;
-
+ros::Publisher uavs_pub[UAV_COUNT];
+ros::Publisher update_uav_path[UAV_COUNT];
 
 using Eigen::MatrixXf;
+using Eigen::MatrixXi;
+
 MatrixXf uavPoseMatrix(3,3);
 MatrixXf uavDistanceMatrix(3,3);
+MatrixXi checkMatrix(3,3);
+MatrixXi sendComMatrix(3,3);
 
-ros::Subscriber uavs_sub[UAV_COUNT];
+ros::Subscriber uavs_remaining_sub[UAV_COUNT];
+ros::Subscriber uavs_arrival_sub[UAV_COUNT];
 std::map<std::string, float> remaining;
+std::map<std::string, bool> arrived;
+std::map<std::string, bool> checked;
+
 
 void remainingStepCallback(const std::string& _qname, const std_msgs::Float64::ConstPtr& msg)
 { 
     remaining[_qname] = msg->data; 
 }
+
+void arrivalCallback(const std::string& _qname, const std_msgs::String::ConstPtr& msg){
+    if(msg->data.compare("SUCCESS") == 0){
+        //ROS_INFO("qname = %s",_qname.c_str());
+        arrived[_qname] = true;
+    }
+}
+
 void check_collision(){
+    std_msgs::Bool uavs[UAV_COUNT];
+    for(int i=0;i<UAV_COUNT;i++)
+        uavs[i].data = false;
+    
+    for(int i=1;i<UAV_COUNT;i++){
+        for(int j=0;j<i;j++){
+            float collision_check_parameter = 2.0;
+            std::string uav_i = "uav", uav_j = "uav";
+            uav_i.push_back(i + 49);
+            uav_j.push_back(j + 49);
+            if(arrived[uav_i] || arrived[uav_j]) //One of them has arrived
+                collision_check_parameter = 1.5; //So reduce the collision check_parameter
+            if(uavDistanceMatrix(i,j) < collision_check_parameter){ //Check whether they have the possibility of "near miss"
+                if (remaining[uav_i] <= remaining[uav_j])
+                    uavs[j].data = true;
+                else
+                    uavs[i].data = true;
+                   
+            }
+        }
+    }
+    
+    for(int i=0;i<UAV_COUNT;i++)
+        uavs_pub[i].publish(uavs[i]);
+}
+
+
+void check_collision_with_replanning(){
 
 	std_msgs::Bool uavs[UAV_COUNT];
 	for(int i=0;i<UAV_COUNT;i++)
@@ -30,18 +77,47 @@ void check_collision(){
 	
     for(int i=1;i<UAV_COUNT;i++){
         for(int j=0;j<i;j++){
+            float collision_check_parameter = 2.0;
             std::string uav_i = "uav", uav_j = "uav";
-            uav_i.push_back(i + 48);
-            uav_j.push_back(j + 48); 
-            if(uavDistanceMatrix(i,j) < 1.5){ //Check whether they have the possibility of "near miss"
-                //ROS_INFO("UAV%d and UAV%d has a risk of collision with distance %f",j+1,i+1,uavDistanceMatrix(i,j));
-                if (remaining[uav_i] < remaining[uav_j]){
-                   //ROS_INFO("Remaning path of UAV%d = %.2f < %.2f(UAV%d)",i+1,remaining[uav_i],remaining[uav_j],j+1);
-                   uavs[i].data = true;
+            uav_i.push_back(i + 49);
+            uav_j.push_back(j + 49);
+            if(arrived[uav_i] || arrived[uav_j]){ //One of them has arrived
+                collision_check_parameter = 6.0; //This is needed to update other uavs' paths safely.
+
+
+                /* ------------------------------ This block contains the mechanism of replanning stimuli, --------------- *
+                 * ------------------------------  considering the other UAVs final positions ---------------------------- */
+                if(arrived[uav_i] && !arrived[uav_j]){
+                    remaining[uav_i] = INT_MAX;
+                    if(!checkMatrix(i,j))
+                        checkMatrix(i,j) = 1;
+                }
+                else if(arrived[uav_j] && !arrived[uav_i]){
+                    remaining[uav_j] = INT_MAX;
+                    if(!checkMatrix(i,j))
+                        checkMatrix(i,j) = 1;
+                }
+
+                /*-------------------------------------------------------------------------------------------------------- */
+            }
+            if(uavDistanceMatrix(i,j) < collision_check_parameter){ //Check whether they have the possibility of "near miss"
+                std_msgs::Bool msg;
+                msg.data = true;
+                if (remaining[uav_i] <= remaining[uav_j]){
+                    uavs[j].data = true;
+                    if(checkMatrix(i,j) && !sendComMatrix(i,j)){
+                        sendComMatrix(i,j) = 1;
+                        ROS_INFO("%s is arrived. Update goal of %s",uav_j.c_str(),uav_i.c_str());
+                        update_uav_path[i].publish(msg);
+                    }
                 }
                 else{
-                   //ROS_INFO("Remaning path of UAV%d = %.2f < %.2f(UAV%d)",j+1,remaining[uav_j],remaining[uav_i],i+1);
-                   uavs[j].data = true;
+                    uavs[i].data = true;
+                    if(checkMatrix(i,j) && !sendComMatrix(i,j)){
+                        sendComMatrix(i,j) = 1;
+                        ROS_INFO("%s is arrived. Update goal of %s",uav_i.c_str(),uav_j.c_str());
+                        update_uav_path[j].publish(msg);
+                    }
                 }
             }
         }
@@ -83,7 +159,7 @@ void loadUAVs(const gazebo_msgs::ModelStates::ConstPtr& msg)
             uavDistanceMatrix(i,j) = sqrt((uavPoseMatrix.row(i) - uavPoseMatrix.row(j)).squaredNorm());
          
 
-    check_collision();
+    check_collision_with_replanning();
 }
 
 int main(int argc, char** argv)
@@ -96,15 +172,30 @@ int main(int argc, char** argv)
     uavDistanceMatrix(1,1) = 0;
     uavDistanceMatrix(2,2) = 0;
 
+    for(int i=0;i<UAV_COUNT;i++){
+        for(int j=0;j<UAV_COUNT;j++){
+            checkMatrix(i,j) = 0;
+            sendComMatrix(i,j) = 0;
+        }
+    }
+
     uavs_pub[0] = node.advertise<std_msgs::Bool>("/uav1/check_collision",1);
     uavs_pub[1] = node.advertise<std_msgs::Bool>("/uav2/check_collision",1);
     uavs_pub[2] = node.advertise<std_msgs::Bool>("/uav3/check_collision",1);
 
+    update_uav_path[0] = node.advertise<std_msgs::Bool>("/uav1/update_goal",1);
+    update_uav_path[1] = node.advertise<std_msgs::Bool>("/uav2/update_goal",1);
+    update_uav_path[2] = node.advertise<std_msgs::Bool>("/uav3/update_goal",1);
 
+    uavs_remaining_sub[0] = node.subscribe<std_msgs::Float64>("/uav1/remaining_step", 1, boost::bind(&remainingStepCallback, "uav1", _1));
+    uavs_remaining_sub[1] = node.subscribe<std_msgs::Float64>("/uav2/remaining_step", 1, boost::bind(&remainingStepCallback, "uav2", _1));
+    uavs_remaining_sub[2] = node.subscribe<std_msgs::Float64>("/uav3/remaining_step", 1, boost::bind(&remainingStepCallback, "uav3", _1));
+	
+    uavs_arrival_sub[0] = node.subscribe<std_msgs::String>("/uav1/arrival", 1, boost::bind(&arrivalCallback, "uav1", _1));
+    uavs_arrival_sub[1] = node.subscribe<std_msgs::String>("/uav2/arrival", 1, boost::bind(&arrivalCallback, "uav2", _1));
+    uavs_arrival_sub[2] = node.subscribe<std_msgs::String>("/uav3/arrival", 1, boost::bind(&arrivalCallback, "uav3", _1));
+    
 
-    uavs_sub[0] = node.subscribe<std_msgs::Float64>("/uav1/remaining_step", 1, boost::bind(&remainingStepCallback, "uav1", _1));
-    uavs_sub[1] = node.subscribe<std_msgs::Float64>("/uav2/remaining_step", 1, boost::bind(&remainingStepCallback, "uav2", _1));
-    uavs_sub[2] = node.subscribe<std_msgs::Float64>("/uav3/remaining_step", 1, boost::bind(&remainingStepCallback, "uav3", _1));
-	ros::spin();
+    ros::spin();
 	return 0;
 }
