@@ -1,6 +1,6 @@
 INSTRUCTIONS FOR THE POINT CLOUD:
 
-You need a quadrotor with kinect or asus xtion to see point cloud
+You need a quadrotor with kinect or asus xtion to see point cloud (quadrotor with asus xtion used in here)
 
 1. Run the command below to open rviz
 	$ rosrun rviz rviz
