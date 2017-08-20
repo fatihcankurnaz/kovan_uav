@@ -1,5 +1,7 @@
 INSTRUCTIONS FOR THE POINT CLOUD:
 
+You need a quadrotor with kinect or asus xtion to see point cloud
+
 1. Run the command below to open rviz
 	$ rosrun rviz rviz
 2. On the display part choose the frame id as the id that you arrange in these codes it is "camera_link"
