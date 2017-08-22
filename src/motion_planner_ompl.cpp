@@ -38,6 +38,8 @@
 
 #include "../include/Semaphore.h"
 
+#define SEQUENTIAL_PLANNER_FACTOR 2.5
+
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
@@ -51,7 +53,7 @@ std::mutex mtx;
 std::condition_variable planning_cnd; 
 Semaphore sem(0);
 size_t total_model_count = 2;
-float waiting_duration = 0.5;
+float waiting_duration = 1.5;
 int uav_count = 0;
 
 bool notObstacle(float sx,float sy){
@@ -69,7 +71,7 @@ bool notObstacle(float sx,float sy){
     std::map<std::string, std::pair<float,float> >::iterator it = uav_list.begin();
     for(;it!=uav_list.end();it++){
         
-        float result = pow(it->second.first - sx,2) + pow(it->second.second - sy,2) - 1.0;
+        float result = pow(it->second.first - sx,2) + pow(it->second.second - sy,2) - 1.2;
         if(result<0)
             return false;
     }
@@ -166,7 +168,7 @@ class WrapperPlanner{
             goal_pos.second = goal->y;
             
             mtx.lock();
-            manualPlanning();
+            autoPlanning();
             mtx.unlock();
             
            
@@ -203,9 +205,10 @@ class WrapperPlanner{
       }
 
       void UpdateGoal(const std::string& robot_frame,const std_msgs::Bool::ConstPtr& msg){
-            //A stimuli that dictates to change our goal has arrived. Check that if goal is in a safe area.
-            //ROS_INFO("Check %s goal if it collides with any drone or obstacle",robot_frame.c_str());
+            //A stimuli that dictates to change our path has arrived. Check that if goal is in a safe area.
             
+            ros::Duration(1.0).sleep();
+            //This sleep is necessary for UAV to stop its movement.
             mtx.lock();
             if(notObstacle(goal_pos.first,goal_pos.second) == false){
                 std::srand(std::time(0));
@@ -223,17 +226,16 @@ class WrapperPlanner{
                             goal_pos.first = temp_goalX;
                             goal_pos.second = temp_goalY;
                             ROS_INFO("New goal_point is (%.2f,%.2f)",goal_pos.first,goal_pos.second);
-                            manualPlanning(); //Plan again.
+                            autoPlanning(); //Plan again.
                             break;
                         }
                 }
             }
-            else //No need to update goal. Plan again, considering finished UAVs.
-                manualPlanning();
+            else //No need to update goal. Check left path considering finished UAVs
+                autoPlanning();
             mtx.unlock();
       }
-
-
+      
       void rloc_callback(const std::string& robot_frame, const gazebo_msgs::ModelStates::ConstPtr& msg){
             
             size_t model_count = msg->name.size();
@@ -268,7 +270,7 @@ class WrapperPlanner{
             if (seconds_passed >= waiting_duration)
             {
                 ROS_INFO("Termination achieved.");
-                waiting_duration += waiting_duration + 0.1;
+                waiting_duration += SEQUENTIAL_PLANNER_FACTOR;
                 ROS_INFO("waiting_duration for %s is %.2f",quad_name.c_str(),waiting_duration);
                 return true;
 
@@ -305,9 +307,10 @@ class WrapperPlanner{
             return pdef;
       }
 
-      void manualPlanning()
+      void autoPlanning()
       {
             //std::unique_lock<std::mutex> lock(mtx); //It gets automatically unlocked when goes out of scope.
+            int solverTimeout = 0;
             ob::StateSpacePtr space(new ob::SE2StateSpace());
             ob::SpaceInformationPtr si(new ob::SpaceInformation(space));
             
@@ -325,6 +328,7 @@ class WrapperPlanner{
             {
                 ROS_INFO("Trying to solve for %s",quad_name.c_str());
                 solved = planner->solve(ptc);
+                solverTimeout++;
                 if(!solved){
                     //mtx.unlock();
                     //planning_cnd.wait(lock);
@@ -338,6 +342,8 @@ class WrapperPlanner{
                     std::function<bool()> f = std::bind(&WrapperPlanner::terminalCondition,this);
                     ob::PlannerTerminationCondition ptc(f);
                 }
+                if(solverTimeout == 5)
+                    break; //Proceed with the former plan.
             }while(!solved);
             if(solved){   
                 ROS_INFO("Found a solution for %s!",quad_name.c_str());
@@ -350,25 +356,16 @@ class WrapperPlanner{
                 }
                 og::PathGeometric* path = (*p).as<og::PathGeometric> ();
                 
-                //path->print(std::cout);
                 
                 std::vector<ob::State*> path_states = path->getStates();
                 float previousX = robot_pos.first;
                 float previousY = robot_pos.second;
+                total_path_length = 0;
                 for(unsigned int i=0,j=0;i<path_states.size();i++,j++){
                     const ob::State* state = path_states[i];
                     const ob::SE2StateSpace::StateType *se2state = state->as<ob::SE2StateSpace::StateType>();
                     float x = se2state->getX();
                     float y = se2state->getY();
-
-                    /*Here we need to eliminate the waypoints that are distant than robot's current position */
-                    float robot_to_goal = euclidean_distance(robot_pos.first,goal_pos.first,robot_pos.second,goal_pos.second);
-                    float waypoint_to_goal = euclidean_distance(x,goal_pos.first,y,goal_pos.second);
-                    if(waypoint_to_goal - robot_to_goal > 0.2){
-                        j--; // Added only for visual purposes.
-                        continue;
-                    }
-                    /* ------------------------------------------------------------------------------------- */
 
                     hector_uav_msgs::Vector p;
                     p.x = x;
@@ -421,7 +418,7 @@ class WrapperPlanner{
                 
                 std_msgs::Float64 distance_msg;
                 distance_msg.data = total_path_length;
-                ROS_INFO("total_path_length = %.2f for %s",total_path_length,quad_name.c_str());
+               
                
                 rem_pub.publish(distance_msg);
 

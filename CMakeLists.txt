@@ -27,7 +27,8 @@ catkin_package(
 
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS} ${OMPL_LIBRARIES})
 
-add_executable(quad_manipulator src/quad_manipulator.cpp)
+
+add_executable(quad_manipulator  src/quad_manipulator.cpp src/Callbacks.cpp)
 target_link_libraries(quad_manipulator ${catkin_LIBRARIES})
 
 add_executable(motion_planner src/motion_planner.cpp)
@@ -42,5 +43,4 @@ target_link_libraries(quad_user_interface ${catkin_LIBRARIES})
 add_executable(collision_checker src/collision_checker.cpp)
 target_link_libraries(collision_checker ${catkin_LIBRARIES})
 
-add_executable(rigid_body_planning src/RigidBodyPlanning.cpp)
-target_link_libraries(rigid_body_planning ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
+
