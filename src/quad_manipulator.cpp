@@ -3,6 +3,7 @@
 //Recall that, static member variables of a class must be properly initialized/constructed outside of the class.
 std::map<std::string, Wrapper::QuadController*> Wrapper::activeQuadrotors;
 
+struct PID pid_;
 
 int main(int argc, char **argv) 
 {

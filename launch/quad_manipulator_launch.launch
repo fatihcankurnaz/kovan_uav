@@ -4,6 +4,6 @@
 	<node pkg="hector_manipulator" type="quad_manipulator" name="quad_controller" output="screen" />
 	<node pkg="hector_manipulator" type="motion_planner_ompl" name="planner_with_ompl" output="screen" />
 	<node pkg="hector_manipulator" type="collision_checker" name="collision_checker" output="screen"/>
-	<node pkg="hector_manipulator" type="pyk.py" name="map_visualized" output="screen"/>
+	<!--node pkg="hector_manipulator" type="pyk.py" name="map_visualized" output="screen"/-->
 	<node pkg="hector_manipulator" type="quad_user_interface" name="quad_UI" output="screen"/>
 </launch>

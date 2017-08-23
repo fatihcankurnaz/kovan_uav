@@ -18,22 +18,25 @@ using Eigen::MatrixXf;
 using Eigen::MatrixXi;
 
 MatrixXf uavPoseMatrix(3,3);
+/* Distance and Check matrices are lower triangular matrices. This is designed in order to avoid duplicates. */
 MatrixXf uavDistanceMatrix(3,3);
 MatrixXi checkMatrix(3,3);
-MatrixXi sendComMatrix(3,3);
-
+/* ------------------------------------------------------------------------------------------------------- */
 ros::Subscriber uavs_remaining_sub[UAV_COUNT];
 ros::Subscriber uavs_arrival_sub[UAV_COUNT];
 std::map<std::string, float> remaining;
 std::map<std::string, bool> arrived;
-std::map<std::string, bool> checked;
 
-
+/* Receives the remaining path length to goal as float */
 void remainingStepCallback(const std::string& _qname, const std_msgs::Float64::ConstPtr& msg)
 { 
     remaining[_qname] = msg->data; 
 }
 
+/* When a UAV arrives, this callback receives the SUCCESS message. The messages are sent from QuadController objects.
+   If more state is desired to be added, it can be implemented there. E.g. a UAV may lost communication, and just before the comm
+   is lost, UAV may send a LOST message.
+*/   
 void arrivalCallback(const std::string& _qname, const std_msgs::String::ConstPtr& msg){
     if(msg->data.compare("SUCCESS") == 0){
         //ROS_INFO("qname = %s",_qname.c_str());
@@ -41,6 +44,7 @@ void arrivalCallback(const std::string& _qname, const std_msgs::String::ConstPtr
     }
 }
 
+// Only checks collision risk, and sends slowing data for lower priority UAVs.
 void check_collision(){
     std_msgs::Bool uavs[UAV_COUNT];
     for(int i=0;i<UAV_COUNT;i++)
@@ -68,7 +72,10 @@ void check_collision(){
         uavs_pub[i].publish(uavs[i]);
 }
 
-
+/*
+    Checks the collision risk. In addition, if any UAV is stopped, it is added as the static obstacle. 
+    So a new planning might be necessary. Sends the corresponding message for replanning.
+*/
 void check_collision_with_replanning(){
 
 	std_msgs::Bool uavs[UAV_COUNT];
@@ -77,7 +84,7 @@ void check_collision_with_replanning(){
 	
     for(int i=1;i<UAV_COUNT;i++){
         for(int j=0;j<i;j++){
-            float collision_check_parameter = 2.75;
+            float collision_check_parameter = 2.0;
             std::string uav_i = "uav", uav_j = "uav";
             uav_i.push_back(i + 49);
             uav_j.push_back(j + 49);
@@ -119,11 +126,14 @@ void check_collision_with_replanning(){
             }
         }
     }
-	
+	// Publish if_slowing messages.
     for(int i=0;i<UAV_COUNT;i++)
         uavs_pub[i].publish(uavs[i]);
 }
 
+/* This callback function, not only records the current positions of UAVs,
+   but also calculates distances of each of them in pairs.
+*/
 void loadUAVs(const gazebo_msgs::ModelStates::ConstPtr& msg)
 {
 
@@ -170,10 +180,8 @@ int main(int argc, char** argv)
     uavDistanceMatrix(2,2) = 0;
 
     for(int i=0;i<UAV_COUNT;i++){
-        for(int j=0;j<UAV_COUNT;j++){
+        for(int j=0;j<UAV_COUNT;j++)
             checkMatrix(i,j) = 0;
-            sendComMatrix(i,j) = 0;
-        }
     }
 
     uavs_pub[0] = node.advertise<std_msgs::Bool>("/uav1/check_collision",1);
