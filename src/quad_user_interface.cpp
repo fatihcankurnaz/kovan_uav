@@ -2,8 +2,10 @@
 #include <hector_uav_msgs/Vector.h>
 #include <std_msgs/String.h>
 
-ros::Publisher ultimate_goal_pub_uav1,ultimate_goal_pub_uav2,ultimate_goal_pub_uav3;
+ros::Publisher ultimate_goal_pub_uav1, ultimate_goal_pub_uav2, ultimate_goal_pub_uav3;
 
+
+// This callback routine is to assign a new ultimate goal to a UAV if that UAV has reached its previous goal.
 void UAVArrivedGoalCallback(const std_msgs::String::ConstPtr& msg)
 {
 	/*if (msg->data == "SUCCESS")
@@ -30,20 +32,23 @@ int main(int argc, char** argv)
 
 	ros::Duration(2.0).sleep();
 
-	hector_uav_msgs::Vector _goal1, _goal2,_goal3;
+	hector_uav_msgs::Vector _goal1, _goal2, _goal3;
+
 	_goal1.x = 7.0;
 	_goal1.y = 7.0;
 	_goal1.z = 2.0;
-
 	ultimate_goal_pub_uav1.publish(_goal1);
+
 	_goal2.x = 7.0;
 	_goal2.y = 5.0;
 	_goal2.z = 1.5;
 	ultimate_goal_pub_uav2.publish(_goal2);
+
 	_goal3.x = 7.0;
 	_goal3.y = 3.0;
 	_goal3.z = 1.0;
 	ultimate_goal_pub_uav3.publish(_goal3);
+
 	ros::spin();
 	return 0;
 }
