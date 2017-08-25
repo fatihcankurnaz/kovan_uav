@@ -83,28 +83,6 @@ bool notObstacle(float sx, float sy, float sz)
     // It was considered at first as that the UAV's current position to its current step position will be taken as a cylindrical obstacle.
     // If there was any other UAVs trying to perform motion planning, they should consider these dynamically shrinking cylinrical obstacles.
     
-    /*if(!all_paths.empty())
-    {
-        std::map<std::string, std::vector<std::pair<float, float> > >::iterator map_itr = all_paths.begin();
-        float a_square = 0.49; //Elipse's short radius
-        for(;map_itr!=all_paths.end();map_itr++)
-        {
-            //ROS_INFO("Path of %s is registered!",(map_itr->first).c_str());
-            for(unsigned int i=0;i<(map_itr->second).size() - 1;i++)
-            {
-                std::pair<float, float> next_step, previous_step;
-                previous_step = (map_itr->second)[i];
-                next_step = (map_itr->second)[i+1];
-                float distance_between_step_goals = pow(next_step.first - previous_step.first, 2) + pow(next_step.second - previous_step.second, 2);
-                float b_square =pow(sqrt(distance_between_step_goals) + 0.5, 2); //Ellipse's long radius
-                float ellipse_center_x =  (next_step.first + previous_step.first) / 2;
-                float ellipse_center_y =  (next_step.second + previous_step.second) / 2;
-                float result = (b_square * pow(sx - ellipse_center_x,2)) + (a_square * pow(sy - ellipse_center_y,2)) - (a_square * b_square);
-                if(result < 0)                    
-                    return false;
-            }     
-        }
-    }*/
 
     return true;
 }

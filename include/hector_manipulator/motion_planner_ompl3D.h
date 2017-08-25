@@ -40,7 +40,7 @@
 #include <thread>
 #include <condition_variable>
 
-#include "../include/hector_manipulator/Semaphore.h"
+#include "../include/Semaphore.h"
 
 #define SEQUENTIAL_PLANNER_TIME 2.5 /*This is the time variable for planning. Planning can be useful down to 0.5 seconds.
                                       It should be designated to meet the purpose of application. */
@@ -66,6 +66,8 @@ bool notObstacle(float sx, float sy, float sz);
 // are valid/invalid in terms of the ability of the UAV to move there without any collision.
 bool isStateValid(const std::string& quad_name, const ob::State* state);
 
+// Includes paths as obstacles. Thus, no intersection between UAV paths occurs.
+bool check_paths_as_obstacles(float sx,float sy,float sz);
 
 /* -------------------- CLASS -------------------- */
 
@@ -113,23 +115,17 @@ class WrapperPlanner{
 		// The callback function that updates the current position of the UAV.
 		void rloc_callback(const std::string& robot_frame, const gazebo_msgs::ModelStates::ConstPtr& msg);
 
-		// The function that checks if the time limit for the planner algorithm has passed or not. When RRT* is used as planner,
-		// the OMPL library did not include the function of duration as terminal condition by default; therefore, there is a new 
-		// one which utilizes <ctime> header's clock() function to compute the time just before the planning starts and let RRT*
-		// check it whenever required while sampling states.
+		/* The function that checks if the time limit for the planner algorithm has passed or not. When RRT* is used as planner, the OMPL library did not include the function of duration as terminal condition by default; therefore, there is a new one which utilizes <ctime> header's clock() function to compute the time just before the planning starts and let RRT* check it whenever required while sampling states.*/
 		bool terminalCondition();
 
 		// This method sets up the necessary/general constraints of the space that the planner will perform, the problem that the planner
 		// will be solving.
 		ob::ProblemDefinitionPtr planner_setup(ob::StateSpacePtr& space, ob::SpaceInformationPtr& si);
 
-		// This method will set the planner's algorithm when performing state sampling - different algorithms have different approaches
-		// of sampling states. The function seems to have a loop of tries, if planner could not find a solution in its first try, it will
-		// have the chance to plan it again, until timeout counter reaches a certain value.
+		/* This method will set the planner's algorithm when performing state sampling - different algorithms have different approaches of sampling states. The function seems to have a loop of tries, if planner could not find a solution in its first try, it will have the chance to plan it again, until timeout counter reaches a certain value.*/
 		void autoPlanning();
 
-		// When the planner successfully finds a path, it will contain a number of steps to reach the ultimate goal. This function will
-		// publish the steps in the given path order to /move_base_simple topic. Of course, there can be paths with only 1 step.
+		/* When the planner successfully finds a path, it will contain a number of steps to reach the ultimate goal. This function will publish the steps in the given path order to /move_base_simple topic. Of course, there can be paths with only 1 step.*/
 		void publishStep();
 };
 

@@ -20,7 +20,7 @@ int main(int argc, char **argv)
     Wrapper::QuadController* new_quad_controller1 = new Wrapper::QuadController(root_node,"uav1");
     Wrapper::QuadController* new_quad_controller2 = new Wrapper::QuadController(root_node,"uav2");
     Wrapper::QuadController* new_quad_controller3 = new Wrapper::QuadController(root_node,"uav3");
-    //Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");
+    Wrapper::QuadController* new_quad_controller4 = new Wrapper::QuadController(root_node,"uav4");
 
 	ros::Rate rate(1000);
 	while(ros::ok()) {

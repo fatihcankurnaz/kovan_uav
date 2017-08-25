@@ -28,14 +28,15 @@ catkin_package(
 include_directories(include ${Boost_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS} ${OMPL_LIBRARIES})
 
 
-add_executable(quad_manipulator  src/quad_manipulator.cpp src/Callbacks.cpp)
+add_executable(quad_manipulator  src/quad_manipulator.cpp src/ControllerCallbacks.cpp)
 target_link_libraries(quad_manipulator ${catkin_LIBRARIES})
 
-add_executable(motion_planner src/motion_planner.cpp)
-target_link_libraries(motion_planner ${catkin_LIBRARIES})
+add_executable(motion_planner_ompl3D src/motion_planner_ompl3D.cpp src/PlannerCallbacks.cpp)
+target_link_libraries(motion_planner_ompl3D ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
 
-add_executable(motion_planner_ompl src/motion_planner_ompl.cpp)
-target_link_libraries(motion_planner_ompl ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
+# In order to use 2D variant, PlannerCallbacks should be adjusted to 2D.
+# add_executable(motion_planner_ompl2D src/motion_planner_ompl2D.cpp src/PlannerCallbacks.cpp)
+# target_link_libraries(motion_planner_ompl2D ${catkin_LIBRARIES} ${OMPL_LIBRARIES})
 
 add_executable(quad_user_interface src/quad_user_interface.cpp)
 target_link_libraries(quad_user_interface ${catkin_LIBRARIES})
