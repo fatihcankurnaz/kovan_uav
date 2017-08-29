@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-	<arg name="world" default="$(find hector_manipulator)/worlds/new.world" />
+	<arg name="world" default="$(find swarm_uav_manipulator)/worlds/new.world" />
 	<arg name="gui" default="true" />
 	<arg name="args" default="" />
 	  

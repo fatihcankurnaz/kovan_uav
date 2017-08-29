@@ -1,4 +1,4 @@
-#include "../include/hector_manipulator/motion_planner_ompl3D.h"
+#include "../include/swarm_uav_manipulator/motion_planner_ompl3D.h"
 
 /*---------------------------------------- CALLBACK FUNCTIONS FOR MOTION PLANNER OMPL 3D --------------------------*/
 
@@ -112,7 +112,7 @@ WrapperPlanner::WrapperPlanner(ros::NodeHandle _nh, std::string uav_name)
 
     done_sub = node.subscribe<hector_uav_msgs::Done>("/" + quad_name + "/Done", 10, 
     	boost::bind(&WrapperPlanner::StepDone, this, quad_name, _1));
-    mainGoal_sub = node.subscribe<hector_uav_msgs::Vector>("/" + quad_name + "/actual_uav_goal", 1, 
+    mainGoal_sub = node.subscribe<geometry_msgs::Point>("/" + quad_name + "/actual_uav_goal", 1, 
     	boost::bind(&WrapperPlanner::MainGoal, this, quad_name, _1));
 
     // ---------------- It might be useful when further plannings are considered as meaningfully costly. ---------------
@@ -121,7 +121,7 @@ WrapperPlanner::WrapperPlanner(ros::NodeHandle _nh, std::string uav_name)
     // -----------------------------------------------------------------------------------------------------------------
 
     step_cmd = node.advertise<geometry_msgs::PoseStamped>("/" + quad_name + "/move_base_simple/goal", 1);
-    //samp_pub = node.advertise<hector_uav_msgs::Vector>("/" + quad_name + "/sampled_point", 1000);
+    //samp_pub = node.advertise<geometry_msgs::PoInt>("/" + quad_name + "/sampled_point", 1000);
     rem_pub = node.advertise<std_msgs::Float64>("/" + quad_name + "/remaining_step", 1);
     arrived_pub = node.advertise<std_msgs::String>("/" + quad_name + "/arrival", 1);
     waypoint_pub = node.advertise<std_msgs::Int32>("/" + quad_name + "/path_number", 1);
@@ -139,13 +139,13 @@ WrapperPlanner::WrapperPlanner(ros::NodeHandle _nh, std::string uav_name)
 
 
 // The callback functon that handles the publishes to actual_uav_goal topic which is related to ultimate goals of UAVs.
-void WrapperPlanner::MainGoal(const std::string& robot_frame, const hector_uav_msgs::Vector::ConstPtr& goal)
+void WrapperPlanner::MainGoal(const std::string& robot_frame, const geometry_msgs::Point::ConstPtr& goal)
 {
 	// Set the goal position for the UAV
     std::get<0>(goal_pos) = goal->x;
     std::get<1>(goal_pos) = goal->y;
     std::get<2>(goal_pos) = goal->z;
-    
+    ROS_INFO("Subscription is succesfull. %.2f,%.2f,%.2f",goal->x,goal->y,goal->z);
     // Every UAV will have its exclusive order to perform planning
     mtx.lock();
     timeBeforePlanning = clock();
@@ -244,7 +244,7 @@ void WrapperPlanner::UpdateGoal(const std::string& robot_frame, const std_msgs::
 // The callback function that updates the current position of the UAV.
 void WrapperPlanner::rloc_callback(const std::string& robot_frame, const gazebo_msgs::ModelStates::ConstPtr& msg)
 {
-	// This callback routine may be transformed into one that accepts a hector_uav_msgs::Vector message published from another 
+	// This callback routine may be transformed into one that accepts a geometry_msgs::Point message published from another 
 	// callback routine that updates the position of the UAV, Wrapper::QuadController::quadPoseCallback(...). In that way, we
 	// could avoid the unnecessary loop below to find the related UAV.
 

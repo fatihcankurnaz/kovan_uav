@@ -1,4 +1,4 @@
-#include "../include/hector_manipulator/QuadController.h"
+#include "../include/swarm_uav_manipulator/QuadController.h"
 
 // Recall that, static member variables of a class must be properly initialized/constructed outside of the class.
 std::map<std::string, Wrapper::QuadController*> Wrapper::activeQuadrotors;

@@ -1,4 +1,4 @@
-#include "../include/hector_manipulator/motion_planner_ompl3D.h"
+#include "../include/swarm_uav_manipulator/motion_planner_ompl3D.h"
 
 /* -------------------- GLOBALS -------------------- */
 
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "motion_planner_ompl");
     ros::NodeHandle node;
-
+   
     ros::Subscriber model_sub = node.subscribe<gazebo_msgs::ModelStates>("/gazebo/model_states", 10, 
     	boost::bind(&loadModels, std::ref(node), _1));
     

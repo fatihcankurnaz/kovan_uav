@@ -1,4 +1,4 @@
-#include "../include/hector_manipulator/QuadController.h"
+#include "../include/swarm_uav_manipulator/QuadController.h"
 
 // Indicates the radius of the goal region by meters
 #define EQUAL_CONST 0.4
