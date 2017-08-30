@@ -6,7 +6,7 @@ This projects aims for a ROS application that manages the autonomous motion plan
 **Usage**
 
  - Go to [ Hector Quadrotor Repository](https://github.com/tu-darmstadt-ros-pkg/hector_quadrotor) and get a clone of it under `∼/catkin ws/src`
- - Get a close of this repository under `∼/catkin ws/src`
+ - Get a clone of this repository under `∼/catkin ws/src`
  - Go to `∼/catkin ws` and run `catkin_make`
  
  Open the terminal and run below commands sequentially.
