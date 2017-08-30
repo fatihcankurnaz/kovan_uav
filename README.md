@@ -22,7 +22,7 @@ This projects aims for a ROS application that manages the autonomous motion plan
  
  - In `worlds/new.world` file, change the corresponding lines so that it directs to your specific root directory.(e.g home/burak, home/tahsin etc.)
  
- *Open two terminals. In each of them go to `∼/catkin ws/src` and run
+ *Open two terminals. In each of them go to `∼/catkin ws` and run
 `source devel/setup.bash`
 This step is required to prepare the layer.*
 
